@@ -3,7 +3,7 @@ title: Backtest Report — Implementation Specification
 domain: trading
 type: infra
 created: 2026-04-19
-updated: 2026-04-19 23:57:00
+updated: 2026-04-21 12:20:00
 sources:
   - wiki/trading/infra/backtest-reporting.md
   - wiki/trading/infra/pysystemtrade.md
@@ -20,7 +20,7 @@ status: draft
 
 ## 1. Overview
 
-A standalone Python package that generates standardised, reproducible PDF backtest reports from persisted pysystemtrade `System` objects (or plain pandas DataFrames for engine-agnostic use). Combines QuantStats portfolio-level analytics with custom per-instrument attribution, producing self-contained tear sheets.
+A standalone Python package that generates standardised, reproducible PDF backtest reports from persisted pysystemtrade `System` objects (or plain pandas DataFrames for engine-agnostic use). Uses QuantStats for metric computation and matplotlib for all chart generation, producing self-contained tear sheets.
 
 **Design principles:**
 
@@ -41,20 +41,29 @@ backtest-report/
 ├── Makefile                         # lint, test, build, install
 ├── src/
 │   └── backtest_report/
-│       ├── __init__.py              # version, public API re-exports
+│       ├── __init__.py              # version (via importlib.metadata), public API re-exports
+│       ├── __main__.py              # Click CLI entry point
 │       ├── report.py                # BacktestReport orchestrator
-│       ├── models.py                # Pydantic data models (config, metadata, sections)
-│       ├── portfolio.py             # QuantStats integration → HTML fragment
+│       ├── models.py                # Pydantic data models (config, metadata) + dataclasses
+│       ├── portfolio.py             # Portfolio charts (matplotlib) + metrics (qs.stats) → HTML
 │       ├── instrument.py            # Per-instrument analysis → HTML fragment
 │       ├── attribution.py           # Return attribution (by instrument, sector, group)
 │       ├── positions.py             # Position heatmap + snapshot tables
+│       ├── header.py                # Header section renderer (metadata display)
+│       ├── appendix.py              # Appendix section renderer (config dump, checksums)
 │       ├── render.py                # Jinja2 template assembly → full HTML → PDF via WeasyPrint
 │       ├── persist.py               # Read/write experiment directories on hc4t
 │       ├── adapters/
 │       │   ├── __init__.py
-│       │   └── pysystemtrade.py     # System → BacktestData adapter (optional dependency)
+│       │   ├── pysystemtrade.py     # System → BacktestData adapter (optional dependency)
+│       │   └── instrument_map.yaml  # pysystemtrade code → InstrumentMeta mapping
 │       └── templates/
 │           ├── report.html          # Jinja2 master template
+│           ├── fonts/
+│           │   ├── Inter-Regular.woff2
+│           │   ├── Inter-SemiBold.woff2
+│           │   ├── JetBrainsMono-Regular.woff2
+│           │   └── OFL.txt          # Font license
 │           ├── sections/
 │           │   ├── header.html
 │           │   ├── portfolio.html
@@ -67,6 +76,8 @@ backtest-report/
 │           │   ├── attribution.html
 │           │   └── appendix.html
 │           └── style.css
+├── scripts/
+│   └── generate_fixtures.py         # Create synthetic test data
 ├── tests/
 │   ├── conftest.py                  # Fixtures: sample BacktestData, mock System
 │   ├── test_report.py
@@ -91,11 +102,13 @@ backtest-report/
 
 ## 3. Data Models (`models.py`)
 
-All data models use **Pydantic v2** for validation and serialisation.
+Models that require validation and serialisation use **Pydantic v2**. Internal data-passing structures use plain **dataclasses** to avoid Pydantic's restrictions on arbitrary types.
 
 ### 3.1 `BacktestConfig`
 
 ```python
+from typing import Any
+
 class BacktestConfig(BaseModel):
     experiment_id: str                # e.g. "sg-trend-proxy_20260419_153000"
     strategy_name: str                 # e.g. "SG Trend Proxy"
@@ -110,29 +123,55 @@ class BacktestConfig(BaseModel):
     currency: str = "USD"
     risk_target_annual_pct: float      # e.g. 20.0
     data_sources: list[str] = []       # e.g. ["pysystemtrade-csv", "eodhd"]
-    config_overrides: dict = {}        # any non-default config values
+    config_overrides: dict[str, Any] = {}  # any non-default config values
 ```
 
 ### 3.2 `BacktestData`
 
 The engine-agnostic input to the report pipeline. This is what `BacktestReport` actually consumes — no pysystemtrade imports required.
 
+Uses `arbitrary_types_allowed` to permit pandas types in Pydantic, with `@field_validator` methods to validate expected structure.
+
 ```python
+from pydantic import ConfigDict, field_validator
+
 class BacktestData(BaseModel):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
     # Portfolio-level daily returns, zero-indexed by date
-    portfolio_returns: pd.Series       # DateIndex → float (daily % returns)
+    portfolio_returns: pd.Series       # DatetimeIndex → float (daily % returns)
 
     # Per-instrument daily P&L in account currency
-    instrument_pnl: pd.DataFrame       # DateIndex × instrument_code → float
+    instrument_pnl: pd.DataFrame       # DatetimeIndex × instrument_code → float
 
     # Per-instrument position sizes (number of contracts or notional)
-    positions: pd.DataFrame             # DateIndex × instrument_code → float
+    positions: pd.DataFrame             # DatetimeIndex × instrument_code → float
 
     # Instrument metadata (sector, group, asset class for attribution)
     instrument_meta: dict[str, InstrumentMeta]
 
     # Optional: per-instrument daily returns (for Sharpe/DD per instrument)
     instrument_returns: dict[str, pd.Series] = {}
+
+    # Optional: benchmark returns for beta calculation in rolling stats
+    # If None, the beta chart is omitted from the rolling stats section
+    benchmark_returns: pd.Series | None = None
+
+    @field_validator("portfolio_returns")
+    @classmethod
+    def validate_portfolio_returns(cls, v: pd.Series) -> pd.Series:
+        if not isinstance(v.index, pd.DatetimeIndex):
+            raise ValueError("portfolio_returns must have a DatetimeIndex")
+        if v.empty:
+            raise ValueError("portfolio_returns must not be empty")
+        return v
+
+    @field_validator("instrument_pnl", "positions")
+    @classmethod
+    def validate_dataframes(cls, v: pd.DataFrame) -> pd.DataFrame:
+        if not isinstance(v.index, pd.DatetimeIndex):
+            raise ValueError("DataFrame must have a DatetimeIndex")
+        return v
 
 class InstrumentMeta(BaseModel):
     code: str                           # e.g. "EDOLLAR"
@@ -152,20 +191,25 @@ class BacktestMeta(BaseModel):
     config: BacktestConfig
     generated_at: datetime
     report_version: str                 # backtest_report package version
-    data_checksums: dict[str, str] = {} # filename → MD5
+    data_checksums: dict[str, str] = {} # filename → "sha256:<hex_digest>"
     notes: str = ""
 ```
 
+**Checksum format:** All checksums use SHA-256 and are stored in the format `"sha256:<hex_digest>"` for explicit algorithm identification and future-proofing.
+
 ### 3.4 Section Output
 
-Each section module returns a `SectionOutput`:
+Each section module returns a `SectionOutput`. This is an **internal data-passing structure** that does not need Pydantic validation or serialisation, so it uses a plain `dataclass` to avoid pandas-in-Pydantic issues:
 
 ```python
-class SectionOutput(BaseModel):
+from dataclasses import dataclass, field
+
+@dataclass
+class SectionOutput:
     section_id: str                     # e.g. "portfolio_pnl"
     html: str                           # rendered HTML fragment
-    figures: dict[str, str] = {}        # figure_id → base64-encoded PNG
-    tables: dict[str, pd.DataFrame] = {} # table_id → DataFrame (for appendix export)
+    figures: dict[str, str] = field(default_factory=dict)        # figure_id → base64-encoded PNG
+    tables: dict[str, pd.DataFrame] = field(default_factory=dict) # table_id → DataFrame (for appendix export)
 ```
 
 ---
@@ -185,7 +229,6 @@ class BacktestReport:
         report = BacktestReport(data=data, meta=meta)
         pdf_path = report.generate()          # → Path to PDF
         html_path = report.generate(fmt="html") # → Path to HTML
-        report.generate(output_dir="/store/backtests/sg-trend-proxy_20260419_153000/")
     """
 
     def __init__(
@@ -194,6 +237,7 @@ class BacktestReport:
         meta: BacktestMeta,
         sections: list[str] | None = None,    # None = all sections
         template_dir: Path | None = None,     # override template lookup
+        custom_css: str | None = None,        # additional CSS to inject (for theming)
     ): ...
 
     def generate(
@@ -203,21 +247,23 @@ class BacktestReport:
         filename: str | None = None,          # default: f"{meta.config.experiment_id}_report.{fmt}"
     ) -> Path:
         """
-        Generate the report.
+        Generate the report. Always writes to a local path.
 
         1. Run each section module to get SectionOutput.
         2. Assemble all HTML fragments + figures into the master template.
         3. Render Jinja2 template with all context.
         4. If fmt="pdf", convert HTML → PDF via WeasyPrint.
         5. Write to output_dir / filename.
-        6. If output_dir is on hc4t (starts with /store/ or ssh path), persist via persist.py.
-        7. Return Path to generated file.
+        6. Return Path to generated file.
+
+        Note: Remote upload (to hc4t) is handled separately by the CLI
+        layer, not by this method. generate() only produces local files.
         """
         ...
 
     # Section registry — maps section_id to callable
-    SECTION_REGISTRY: dict[str, Callable] = {
-        "header": sections.render_header,
+    SECTION_REGISTRY: dict[str, Callable[[BacktestData, BacktestMeta], SectionOutput]] = {
+        "header": header.render_header,
         "portfolio_pnl": portfolio.render_portfolio_pnl,
         "monthly_returns": portfolio.render_monthly_returns,
         "portfolio_stats": portfolio.render_portfolio_stats,
@@ -226,7 +272,7 @@ class BacktestReport:
         "instrument_table": instrument.render_instrument_table,
         "position_snapshot": positions.render_position_snapshot,
         "attribution": attribution.render_attribution,
-        "appendix": sections.render_appendix,
+        "appendix": appendix.render_appendix,
     }
 ```
 
@@ -241,8 +287,12 @@ def generate_report(
     """
     Load data from an experiment directory and generate report.
 
-    Reads: experiment_dir/system.pkl (via adapter), experiment_dir/config.yaml,
-           experiment_dir/meta.json
+    Reads from experiment_dir using Parquet-first loading strategy:
+      1. Try: portfolio_returns.parquet, instrument_pnl.parquet,
+              positions.parquet, instrument_meta.json (no pysystemtrade needed)
+      2. Fallback: system.pkl (via adapter, requires pysystemtrade)
+    Also reads: config.yaml, meta.json
+
     Writes: experiment_dir/report.pdf (or .html)
     """
 
@@ -270,7 +320,7 @@ Each section is a pure function with signature:
 def render_<section_id>(data: BacktestData, meta: BacktestMeta) -> SectionOutput
 ```
 
-### 5.1 Header (`sections/header.html`)
+### 5.1 Header (`header.py` → `sections/header.html`)
 
 **Data source:** `meta.config`
 
@@ -291,15 +341,17 @@ def render_<section_id>(data: BacktestData, meta: BacktestMeta) -> SectionOutput
 
 - Cumulative return curve (equity curve starting at 1.0)
 - Underwater drawdown plot (percentage drawdown from peak)
-- Both plots generated by QuantStats `qs.reports.html()`, but we extract only the relevant HTML fragments and embed in our template (not the full QuantStats page)
+- Both plots generated **directly using matplotlib**, styled to match the report design system
 
 **Implementation:**
-1. Call `qs.reports.html(returns, output=None, title="Portfolio")` with `data.portfolio_returns`
-2. Parse the returned HTML to extract: cumulative return chart, drawdown chart
-3. Apply custom CSS class `br-portfolio-pnl` and `br-portfolio-drawdown`
-4. Return as base64-encoded PNG images in `SectionOutput.figures`
+1. Compute cumulative returns: `(1 + data.portfolio_returns).cumprod()`
+2. Compute drawdown: `cumulative / cumulative.cummax() - 1`
+3. Generate equity curve figure with matplotlib (styled per §9)
+4. Generate drawdown figure with matplotlib (styled per §9)
+5. Apply custom CSS class `br-portfolio-pnl` and `br-portfolio-drawdown`
+6. Encode figures as base64 PNG via `io.BytesIO` → return in `SectionOutput.figures`
 
-**Custom styling override:** QuantStats default dark theme → override to light background, consistent font stack (`Inter, -apple-system, sans-serif`), muted grid lines.
+**Note on QuantStats:** QuantStats is used exclusively via its `qs.stats` module for metric computation (see §5.4). Its `qs.reports.html()` function is **not** used for chart generation, as it produces a complete standalone page with no stable API for fragment extraction. All charts are generated with matplotlib for full control over styling, DPI, sizing, and page-break behaviour.
 
 ### 5.3 Monthly Returns (`portfolio.py` → `sections/monthly_returns.html`)
 
@@ -308,39 +360,44 @@ def render_<section_id>(data: BacktestData, meta: BacktestMeta) -> SectionOutput
 - Monthly return table: rows = years, columns = months + full-year total
 - Cells coloured: green (positive, intensity by magnitude), red (negative, intensity by magnitude), grey (zero)
 - Worst month highlighted; best month highlighted
-- Generated by QuantStats, extracted and re-styled
+
+**Implementation:**
+1. Resample daily returns to monthly: `data.portfolio_returns.resample('ME').apply(lambda x: (1 + x).prod() - 1)`
+2. Pivot into year × month table with annual total column
+3. Render as HTML `<table>` with inline `background-color` styles for conditional formatting
+4. Colour intensity scales linearly with return magnitude (cap at ±10% for palette range)
 
 ### 5.4 Portfolio Stats (`portfolio.py` → `sections/portfolio_stats.html`)
 
 **Data source:** `data.portfolio_returns`
 
-Key metrics table (2 columns: metric, value):
+Key metrics table (2 columns: metric, value). Uses `qs.stats` for computation where available, with manual fallbacks:
 
 | Metric | Computation |
 |--------|-------------|
-| Total Return | `cumulative_returns[-1] - 1` |
-| CAGR | `((1 + total_return) ** (252/n_days) - 1)` |
-| Annualised Vol | `returns.std() * sqrt(252)` |
-| Sharpe Ratio | `annualised_return / annualised_vol` |
-| Sortino Ratio | `annualised_return / downside_deviation` |
-| Calmar Ratio | `CAGR / abs(max_drawdown)` |
-| Max Drawdown | `min(cumulative_returns / cumulative_max - 1)` |
+| Total Return | `qs.stats.comp(returns)` or `cumulative_returns[-1] - 1` |
+| CAGR | `qs.stats.cagr(returns)` or `((1 + total_return) ** (252/n_days) - 1)` |
+| Annualised Vol | `qs.stats.volatility(returns)` or `returns.std() * sqrt(252)` |
+| Sharpe Ratio | `qs.stats.sharpe(returns)` or `annualised_return / annualised_vol` |
+| Sortino Ratio | `qs.stats.sortino(returns)` or `annualised_return / downside_deviation` |
+| Calmar Ratio | `qs.stats.calmar(returns)` or `CAGR / abs(max_drawdown)` |
+| Max Drawdown | `qs.stats.max_drawdown(returns)` |
 | Max DD Duration | longest period below peak (calendar days) |
-| Win Rate | `% of positive return days` |
-| Profit Factor | `sum(positive_returns) / abs(sum(negative_returns))` |
-| Avg Win / Avg Loss | `mean(positive) / abs(mean(negative))` |
-| Skewness | `returns.skew()` |
-| Kurtosis | `returns.kurtosis()` |
-| Best Day | `returns.max()` |
-| Worst Day | `returns.min()` |
+| Win Rate | `qs.stats.win_rate(returns)` or `% of positive return days` |
+| Profit Factor | `qs.stats.profit_factor(returns)` |
+| Avg Win / Avg Loss | `qs.stats.avg_win(returns) / abs(qs.stats.avg_loss(returns))` |
+| Skewness | `qs.stats.skew(returns)` or `returns.skew()` |
+| Kurtosis | `qs.stats.kurtosis(returns)` or `returns.kurtosis()` |
+| Best Day | `qs.stats.best(returns)` or `returns.max()` |
+| Worst Day | `qs.stats.worst(returns)` or `returns.min()` |
 
 ### 5.5 Rolling Stats (`portfolio.py` → `sections/rolling_stats.html`)
 
-**Data source:** `data.portfolio_returns`
+**Data source:** `data.portfolio_returns`, `data.benchmark_returns` (optional)
 
 - Rolling 1-year Sharpe ratio (252-day window)
 - Rolling 3-year annualised return (756-day window)
-- Beta to benchmark (if benchmark provided in config; otherwise SPY buy-and-hold)
+- Beta to benchmark — **only shown if `data.benchmark_returns` is provided**; omitted entirely otherwise (trend-following beta to a default equity index is misleading)
 
 Plots as matplotlib figures → base64 PNG.
 
@@ -394,12 +451,12 @@ Rendered as an HTML `<table>` with `br-instrument-table` class. Alternating row 
 
 Charts as matplotlib → base64 PNG.
 
-### 5.10 Appendix (`sections/appendix.html`)
+### 5.10 Appendix (`appendix.py` → `sections/appendix.html`)
 
 **Data source:** `meta.config`, `meta.data_checksums`
 
 - Full config YAML dump (syntax-highlighted in a `<pre>` block with monospace font)
-- Data checksums table (filename → MD5)
+- Data checksums table (filename → SHA-256)
 - Python environment: `python_version`, `engine_version`, package versions
 - Git commit short hash
 
@@ -415,15 +472,23 @@ def extract_backtest_data(system: "System") -> BacktestData:
     Extract all data from a pysystemtrade System object into
     engine-agnostic BacktestData.
 
+    Verified against pysystemtrade v1.8.x. Method names vary between
+    versions — if upgrading pysystemtrade, re-verify these calls:
+
     Steps:
     1. Get instrument list from system.get_instrument_list()
-    2. Get portfolio returns from system.accounts.portfolio().returns()
+    2. Get portfolio returns from system.accounts.portfolio().percent
     3. For each instrument:
-       a. PnL: system.accounts.get_instrument_pnl(instrument)
-       b. Positions: system.positionSize.get_positions(instrument)
-       c. Returns: system.accounts.get_instrument_returns(instrument)
-    4. Get instrument metadata from system.config or external mapping
+       a. PnL: system.accounts.pandl_for_subsystem(instrument)
+       b. Positions: system.portfolio.get_notional_position(instrument)
+       c. Returns: derived from PnL / notional_exposure
+    4. Get instrument metadata from external mapping (instrument_map.yaml)
     5. Return BacktestData with all fields populated
+
+    NOTE: Before relying on these calls, run:
+        help(system.accounts.portfolio)
+        dir(system.accounts)
+    to confirm method signatures for your installed version.
     """
 
 def extract_backtest_config(system: "System", config_path: Path) -> BacktestConfig:
@@ -441,9 +506,11 @@ def load_system(pickle_path: Path) -> "System":
     """
 ```
 
-**Instrument metadata mapping:** pysystemtrade uses instrument codes like `"EDOLLAR"`, `"US10"`, `"GOLD"`. The adapter includes a built-in mapping file (`instrument_map.yaml`) that maps codes to `InstrumentMeta` (name, sector, group, asset_class). This file is maintained in the repo and can be overridden by the user.
+**Instrument metadata mapping:** pysystemtrade uses instrument codes like `"EDOLLAR"`, `"US10"`, `"GOLD"`. The adapter includes a built-in mapping file (`adapters/instrument_map.yaml`) that maps codes to `InstrumentMeta` (name, sector, group, asset_class). This file is maintained in the repo, loaded via `importlib.resources`, and can be overridden by the user.
 
 ### 6.1 `instrument_map.yaml`
+
+Located at `src/backtest_report/adapters/instrument_map.yaml`:
 
 ```yaml
 # Maps pysystemtrade instrument codes to metadata
@@ -488,46 +555,74 @@ Handles reading and writing experiment directories. Works both locally and via S
 ```python
 def read_experiment_dir(path: Path) -> tuple[BacktestData, BacktestMeta]:
     """
-    Read a local experiment directory:
-      - system.pkl → BacktestData (via adapter)
-      - config.yaml → BacktestConfig
-      - meta.json → BacktestMeta supplement
-      - data_checksums.json → included in meta
+    Read a local experiment directory. Uses a Parquet-first loading
+    strategy to maintain engine-agnostic design:
+
+    Strategy 1 — Parquet mode (preferred, no pysystemtrade needed):
+      Reads: portfolio_returns.parquet, instrument_pnl.parquet,
+             positions.parquet, instrument_meta.json
+      Also: config.yaml, meta.json, data_checksums.json
+
+    Strategy 2 — Pickle fallback (requires pysystemtrade):
+      Reads: system.pkl (via adapter)
+      Also: config.yaml, meta.json, data_checksums.json
+
+    Falls back from Strategy 1 → Strategy 2 if Parquet files are missing.
+    Raises ImportError with a clear message if pickle mode is needed
+    but pysystemtrade is not installed.
     """
 
 def write_experiment_dir(
     path: Path,
-    system: "System",
+    data: BacktestData,
     config: BacktestConfig,
     data_checksums: dict[str, str],
+    system: "System | None" = None,   # optional: also persist the System pickle
 ) -> None:
     """
-    Write experiment directory:
-      - system.pkl
+    Write experiment directory. Always writes Parquet exports as standard
+    to enable engine-agnostic reading:
+      - portfolio_returns.parquet
+      - instrument_pnl.parquet
+      - positions.parquet
+      - instrument_meta.json
       - config.yaml
       - data_checksums.json
       - meta.json (auto-generated)
+      - system.pkl (only if system object is provided)
     """
 ```
 
 ### 7.2 Remote (hc4t server)
 
+Remote connection details are resolved from a config cascade (highest priority first):
+
+1. CLI flags (`--host`, `--remote-base`)
+2. `.backtest-report.yaml` config file (`remote.host`, `remote.base_path`)
+3. Environment variables (`BACKTEST_REPORT_HOST`, `BACKTEST_REPORT_REMOTE_BASE`)
+4. Hardcoded defaults (last resort)
+
+Uses `subprocess` + `scp`/`rsync` for file transfer (relies on SSH config for authentication). No additional Python SSH library required.
+
 ```python
 def read_remote_experiment(
     experiment_id: str,
-    host: str = "quant@hc4t.sheldenkar.com",
-    remote_base: str = "/store/backtests",
+    host: str | None = None,           # resolved from config cascade
+    remote_base: str | None = None,    # resolved from config cascade
 ) -> tuple[BacktestData, BacktestMeta]:
     """
     SCP experiment files from remote server to a local temp directory,
-    then read locally. Uses subprocess + scp for simplicity.
+    then read locally using read_experiment_dir().
+
+    Default host: quant@hc4t.sheldenkar.com
+    Default remote_base: /store/backtests
     """
 
 def write_remote_report(
     pdf_path: Path,
     experiment_id: str,
-    host: str = "quant@hc4t.sheldenkar.com",
-    remote_base: str = "/store/backtests",
+    host: str | None = None,           # resolved from config cascade
+    remote_base: str | None = None,    # resolved from config cascade
 ) -> None:
     """
     SCP generated report.pdf to remote experiment directory.
@@ -547,29 +642,23 @@ Examples:
 
 ### 7.4 Directory Structure (on hc4t)
 
+Parquet exports are written as **standard** (not optional) to enable engine-agnostic loading:
+
 ```
 /store/backtests/
 ├── sg-trend-proxy_20260419_153000/
-│   ├── system.pkl
+│   ├── system.pkl                    # pysystemtrade System object (optional)
+│   ├── portfolio_returns.parquet     # standard — always written
+│   ├── instrument_pnl.parquet        # standard — always written
+│   ├── positions.parquet             # standard — always written
+│   ├── instrument_meta.json          # standard — always written
 │   ├── config.yaml
 │   ├── data_checksums.json
 │   ├── meta.json
 │   └── report.pdf
 ├── ewmac-trend_20260420_090000/
-│   ├── system.pkl
-│   ├── config.yaml
-│   ├── data_checksums.json
-│   ├── meta.json
-│   └── report.pdf
+│   └── ...
 └── ...
-```
-
-**Parquet export (optional):** When `--export-parquet` flag is used, also write:
-```
-├── portfolio_returns.parquet
-├── instrument_pnl.parquet
-├── positions.parquet
-└── instrument_meta.json
 ```
 
 ---
@@ -583,6 +672,7 @@ def assemble_html(
     sections: dict[str, SectionOutput],
     meta: BacktestMeta,
     template_dir: Path | None = None,
+    custom_css: str | None = None,     # additional CSS to inject after style.css
 ) -> str:
     """
     1. Load Jinja2 environment from templates/
@@ -590,7 +680,8 @@ def assemble_html(
        - meta (config, timestamps, etc.)
        - sections (dict of section_id → html fragment)
        - figures (dict of figure_id → base64 PNG data URIs)
-    3. Return complete HTML string
+    3. If custom_css provided, inject after the main style.css
+    4. Return complete HTML string
     """
 ```
 
@@ -604,10 +695,21 @@ def html_to_pdf(html: str, output_path: Path) -> Path:
     Settings:
     - Page size: A4
     - Margins: 15mm all sides
-    - Header: experiment_id + page number (right-aligned)
-    - Footer: "Generated by backtest-report v{version} | {timestamp}"
-    - CSS: load from templates/style.css, embed all fonts and images
+    - Header/footer: implemented via CSS @page margin boxes (see §9.4)
+    - CSS: loaded from templates/style.css, includes @font-face for bundled fonts
     - DPI: 150 for rasterised matplotlib figures
+    - Optimisation: optimize_images=True, jpeg_quality=85
+
+    Implementation:
+        from weasyprint import HTML
+        HTML(
+            string=html,
+            base_url=str(template_dir),  # resolves relative font/image paths
+        ).write_pdf(
+            str(output_path),
+            optimize_images=True,
+            jpeg_quality=85,
+        )
     """
 ```
 
@@ -622,8 +724,16 @@ def html_to_pdf(html: str, output_path: Path) -> Path:
     <meta charset="utf-8">
     <title>{{ meta.config.experiment_id }} — Backtest Report</title>
     <style>{% include "style.css" %}</style>
+    {% if custom_css %}<style>{{ custom_css }}</style>{% endif %}
 </head>
 <body>
+    <!-- Running elements for @page margin boxes (positioned via CSS) -->
+    <div class="br-running-header">
+        <span style="string-set: experiment-id '{{ meta.config.experiment_id }}'"></span>
+        <span style="string-set: report-version '{{ meta.report_version }}'"></span>
+        <span style="string-set: generated-at '{{ meta.generated_at.strftime("%Y-%m-%d %H:%M") }}'"></span>
+    </div>
+
     {% if sections.header %}{{ sections.header.html | safe }}{% endif %}
 
     <div class="br-page-break"></div>
@@ -662,7 +772,36 @@ Each section partial (e.g. `sections/portfolio.html`) receives its data and figu
 
 ## 9. Styling (`templates/style.css`)
 
-### 9.1 Design System
+### 9.1 Font Embedding
+
+Fonts are bundled in `templates/fonts/` and loaded via `@font-face`. This ensures the report renders correctly in offline and CI environments without relying on external CDN requests.
+
+```css
+@font-face {
+    font-family: 'Inter';
+    src: url('fonts/Inter-Regular.woff2') format('woff2');
+    font-weight: 400;
+    font-style: normal;
+}
+
+@font-face {
+    font-family: 'Inter';
+    src: url('fonts/Inter-SemiBold.woff2') format('woff2');
+    font-weight: 600;
+    font-style: normal;
+}
+
+@font-face {
+    font-family: 'JetBrains Mono';
+    src: url('fonts/JetBrainsMono-Regular.woff2') format('woff2');
+    font-weight: 400;
+    font-style: normal;
+}
+```
+
+**Fallback:** If font files are missing (e.g. in a minimal Docker environment), the system font stack (`-apple-system, 'Segoe UI', sans-serif`) is used. The report still generates correctly, just with different typography.
+
+### 9.2 Design System
 
 ```css
 :root {
@@ -696,25 +835,87 @@ Each section partial (e.g. `sections/portfolio.html`) receives its data and figu
 }
 ```
 
-### 9.2 Typography
+### 9.3 Typography
 
 - **Headers**: Inter, 600 weight
 - **Body**: Inter, 400 weight, 10pt, line-height 1.5
 - **Data tables**: Inter, 400 weight, 8pt, line-height 1.3
 - **Code/config dumps**: JetBrains Mono, 400 weight, 7.5pt
 
-### 9.3 Print Rules
+### 9.4 Page Rules (WeasyPrint CSS Paged Media)
 
-- Page breaks between major sections (`br-page-break`)
-- No orphan headers (keep with next content)
-- Figure captions below figures
-- Tables don't split across pages when possible (`page-break-inside: avoid`)
+WeasyPrint implements headers, footers, and page numbers via CSS `@page` margin boxes, not programmatically. These rules must be in `style.css`:
+
+```css
+@page {
+    size: A4;
+    margin: 15mm;
+
+    @top-right {
+        content: string(experiment-id) "  |  Page " counter(page) " of " counter(pages);
+        font-family: var(--br-font-body);
+        font-size: 7pt;
+        color: var(--br-col-muted);
+    }
+
+    @bottom-center {
+        content: "Generated by backtest-report v" string(report-version) " | " string(generated-at);
+        font-family: var(--br-font-body);
+        font-size: 6.5pt;
+        color: var(--br-col-muted);
+    }
+}
+
+/* First page has no header (the header section serves as the title page) */
+@page :first {
+    @top-right {
+        content: none;
+    }
+}
+```
+
+### 9.5 Print Rules
+
+```css
+.br-page-break {
+    page-break-after: always;
+    break-after: page;
+}
+
+/* Prevent orphan headings */
+h2, h3 {
+    page-break-after: avoid;
+    break-after: avoid;
+}
+
+/* Keep tables and figures together */
+table, figure, .br-figure {
+    page-break-inside: avoid;
+    break-inside: avoid;
+}
+
+/* Figure captions */
+figcaption,
+.br-figure-caption {
+    text-align: center;
+    font-size: 8pt;
+    color: var(--br-col-muted);
+    margin-top: var(--br-spacing-xs);
+}
+```
 
 ---
 
 ## 10. CLI Interface
 
-The package installs a `backtest-report` CLI command:
+The package installs a `backtest-report` CLI command using **Click** (`click ≥8.0`):
+
+**Entry point** (in `pyproject.toml`):
+
+```toml
+[project.scripts]
+backtest-report = "backtest_report.__main__:cli"
+```
 
 ```bash
 # Generate report from a local experiment directory
@@ -734,6 +935,9 @@ backtest-report generate \
     --meta meta.json \
     --output-dir ./reports/
 
+# Upload a locally-generated report to hc4t
+backtest-report upload /path/to/report.pdf --experiment-id sg-trend-proxy_20260419_153000
+
 # List available sections
 backtest-report sections
 
@@ -751,25 +955,34 @@ backtest-report generate [PATH] [OPTIONS]
 
 Arguments:
   PATH                    Local experiment directory containing
-                          system.pkl, config.yaml, meta.json
+                          Parquet files (or system.pkl), config.yaml, meta.json
 
 Options:
   --remote EXPERIMENT_ID  Pull from hc4t server instead of local path
-  --host TEXT             Remote host (default: quant@hc4t.sheldenkar.com)
-  --remote-base TEXT      Remote base path (default: /store/backtests)
+  --host TEXT             Remote host (overrides config cascade)
+  --remote-base TEXT      Remote base path (overrides config cascade)
   --sections TEXT         Comma-separated section IDs to include
                           (default: all)
   --format TEXT           Output format: pdf, html (default: pdf)
   --output-dir PATH       Output directory (default: experiment directory)
   --filename TEXT         Output filename (default: auto-generated)
-  --export-parquet        Also export DataFrames as Parquet files
-  --verbose               Log section generation progress
+  --verbose               Log section generation progress (DEBUG level)
 
 Raw DataFrame options (mutually exclusive with PATH):
   --portfolio-returns PATH   Parquet/CSV file with portfolio returns series
   --instrument-pnl PATH     Parquet/CSV file with instrument PnL DataFrame
   --positions PATH           Parquet/CSV file with positions DataFrame
   --meta PATH                JSON file with BacktestMeta
+
+backtest-report upload PDF_PATH [OPTIONS]
+
+Arguments:
+  PDF_PATH                Path to the generated report PDF
+
+Options:
+  --experiment-id TEXT    Experiment ID for remote directory (required)
+  --host TEXT             Remote host (overrides config cascade)
+  --remote-base TEXT      Remote base path (overrides config cascade)
 ```
 
 ---
@@ -783,19 +996,19 @@ Raw DataFrame options (mutually exclusive with PATH):
 | python | ≥3.10 | Minimum runtime |
 | pandas | ≥2.0 | DataFrame handling |
 | numpy | ≥1.24 | Numerical computation |
-| matplotlib | ≥3.7 | Figure generation |
-| quantstats | ≥0.0.62 | Portfolio analytics |
+| matplotlib | ≥3.7 | Figure generation (all charts) |
+| quantstats | ≥0.0.62 | Portfolio metrics via `qs.stats` |
 | jinja2 | ≥3.1 | Template rendering |
 | weasyprint | ≥60 | HTML → PDF |
 | pydantic | ≥2.0 | Data model validation |
-| pyyaml | ≥6.0 | Config file handling |
+| pyyaml | ≥6.0 | Config file handling (pysystemtrade configs are YAML) |
+| click | ≥8.0 | CLI framework |
 
 ### 11.2 Optional
 
 | Package | Version | Purpose |
 |---------|---------|---------|
 | pysystemtrade | ≥1.8 | System object adapter (optional) |
-| paramiko | ≥3.0 | SSH/SCP for remote experiments (optional) |
 | pyarrow | ≥12.0 | Parquet read/write (optional, faster than CSV) |
 
 ### 11.3 Dev dependencies
@@ -809,22 +1022,81 @@ Raw DataFrame options (mutually exclusive with PATH):
 
 ---
 
-## 12. Testing Strategy
+## 12. Logging
 
-### 12.1 Unit Tests
+The package uses Python's `logging` module with a root logger named `backtest_report`.
+
+**Log levels:**
+- `WARNING` (default) — only errors and warnings surfaced
+- `DEBUG` (via `--verbose` CLI flag) — detailed timing and progress
+
+**Key log points:**
+- Section generation start/end with elapsed time
+- QuantStats metric computation timing
+- WeasyPrint rendering timing
+- Remote SCP operations (start, success, failure)
+- Graceful degradation events (missing data, QuantStats failures, benchmark omission)
+
+```python
+import logging
+
+logger = logging.getLogger("backtest_report")
+
+# In report.py
+logger.info("Generating section: %s", section_id)
+logger.debug("Section %s completed in %.2fs", section_id, elapsed)
+
+# In portfolio.py (graceful degradation)
+logger.warning("qs.stats.sharpe() failed, falling back to manual computation: %s", err)
+```
+
+---
+
+## 13. Versioning
+
+The package version is managed via a **single source of truth** in `pyproject.toml`:
+
+```toml
+[project]
+name = "backtest-report"
+version = "0.1.0"
+```
+
+At runtime, the version is read via `importlib.metadata`:
+
+```python
+# __init__.py
+from importlib.metadata import version, PackageNotFoundError
+
+try:
+    __version__ = version("backtest-report")
+except PackageNotFoundError:
+    __version__ = "0.0.0-dev"
+```
+
+This version string is used in:
+- `BacktestMeta.report_version`
+- PDF footer (`"Generated by backtest-report v{version}"`)
+- CLI `--version` flag
+
+---
+
+## 14. Testing Strategy
+
+### 14.1 Unit Tests
 
 Each module has corresponding unit tests in `tests/`:
 
-- `test_portfolio.py` — portfolio metrics computation, QuantStats fragment extraction
+- `test_portfolio.py` — portfolio metrics computation, chart generation, monthly returns table
 - `test_instrument.py` — per-instrument PnL curves, small multiples layout
 - `test_attribution.py` — sector/group aggregation, top-N + "Other" grouping
 - `test_positions.py` — heatmap generation, sampling frequency
 - `test_render.py` — template assembly, PDF generation (snapshot testing)
-- `test_persist.py` — experiment directory read/write, naming validation
+- `test_persist.py` — experiment directory read/write (both Parquet and pickle modes), naming validation
 - `test_pysystemtrade_adapter.py` — System → BacktestData extraction (mocked System)
 - `test_report.py` — end-to-end: BacktestReport with sample data → PDF file
 
-### 12.2 Test Fixtures
+### 14.2 Test Fixtures
 
 `tests/fixtures/` contains:
 
@@ -833,9 +1105,9 @@ Each module has corresponding unit tests in `tests/`:
 - `sample_positions.parquet` — realistic position sizes
 - `sample_meta.json` — complete BacktestMeta example
 
-**How to generate fixtures:** A `scripts/generate_fixtures.py` script creates synthetic but realistic backtest data using numpy (random walk with drift, controlled correlation structure).
+**How to generate fixtures:** The `scripts/generate_fixtures.py` script creates synthetic but realistic backtest data using numpy (random walk with drift, controlled correlation structure).
 
-### 12.3 Integration Test
+### 14.3 Integration Test
 
 ```python
 def test_end_to_end_report_generation():
@@ -847,7 +1119,7 @@ def test_end_to_end_report_generation():
     """
 ```
 
-### 12.4 Snapshot Testing
+### 14.4 Snapshot Testing
 
 For PDF output, we don't binary-diff. Instead:
 1. Generate HTML output
@@ -857,26 +1129,27 @@ For PDF output, we don't binary-diff. Instead:
 
 ---
 
-## 13. Error Handling
+## 15. Error Handling
 
-### 13.1 Missing Data
+### 15.1 Missing Data
 
 - If an instrument has no position data, the instrument PnL and position sections skip it gracefully
 - If `instrument_meta` is incomplete, default sector/group to `"Unknown"`
 - If `instrument_returns` dict is empty, compute approximate returns from PnL
 
-### 13.2 Short History
+### 15.2 Short History
 
 - If backtest period < 1 year: rolling stats sections show a warning banner instead of a chart
 - If < 30 days: report still generates but header shows `"⚠ Short history (N days)"`
 
-### 13.3 QuantStats Failures
+### 15.3 QuantStats Failures
 
-- Wrap QuantStats calls in try/except
-- On failure: generate a minimal text-based section with the error message
+- Wrap `qs.stats.*` calls in try/except
+- On failure: fall back to manual computation (pandas/numpy) and log a warning
+- If manual computation also fails: display `"N/A"` for that metric
 - Never let a QuantStats failure prevent the entire report from generating
 
-### 13.4 Remote Access Failures
+### 15.4 Remote Access Failures
 
 - If SCP to hc4t fails: clear error message with connection troubleshooting hints
 - If `system.pkl` is corrupt or incompatible pysystemtrade version: error message with version info
@@ -884,7 +1157,7 @@ For PDF output, we don't binary-diff. Instead:
 
 ---
 
-## 14. Configuration Override
+## 16. Configuration Override
 
 Users can override report behaviour via a `.backtest-report.yaml` file or CLI flags:
 
@@ -920,11 +1193,16 @@ report:
     dpi: 150
     page_size: A4
     margins_mm: 15
+
+# Remote connection settings (lowest priority after CLI flags and env vars)
+remote:
+  host: "quant@hc4t.sheldenkar.com"
+  base_path: "/store/backtests"
 ```
 
 ---
 
-## 15. QuantConnect / LEAN Adapter (Future)
+## 17. QuantConnect / LEAN Adapter (Future)
 
 The architecture explicitly supports future adapters. When QuantConnect backtests are needed:
 
@@ -939,40 +1217,42 @@ This requires no changes to any other module — `BacktestReport` only sees `Bac
 
 ---
 
-## 16. Implementation Order
+## 18. Implementation Order
 
 | Phase | Items | Description |
 |-------|-------|-------------|
-| **P1** | `models.py`, `persist.py` (local only) | Data models + experiment directory read/write |
-| **P2** | `portfolio.py` | QuantStats integration — portfolio PnL, monthly returns, stats, rolling stats |
-| **P3** | `render.py` + templates | Jinja2 template assembly + WeasyPrint PDF generation |
-| **P4** | `report.py` | BacktestReport orchestrator that wires sections together |
+| **P1** | `models.py`, `persist.py` (local only) | Data models + experiment directory read/write (Parquet-first) |
+| **P2** | `portfolio.py` | Matplotlib charts + qs.stats metrics — portfolio PnL, monthly returns, stats, rolling stats |
+| **P3** | `render.py` + templates + style.css | Jinja2 template assembly + WeasyPrint PDF generation + @page rules + font embedding |
+| **P4** | `report.py`, `header.py`, `appendix.py` | BacktestReport orchestrator + header/appendix renderers |
 | **P5** | `instrument.py` | Per-instrument PnL curves, instrument stats table |
 | **P6** | `positions.py` | Position heatmap |
 | **P7** | `attribution.py` | Return attribution by instrument and sector |
-| **P8** | `adapters/pysystemtrade.py` | System → BacktestData adapter |
-| **P9** | CLI (`__main__.py`) | Click/argparse CLI interface |
-| **P10** | `persist.py` (remote) | SCP read/write for hc4t |
+| **P8** | `adapters/pysystemtrade.py` | System → BacktestData adapter (verify API against installed version) |
+| **P9** | CLI (`__main__.py`) | Click CLI interface with subcommands |
+| **P10** | `persist.py` (remote) | SCP read/write for hc4t via subprocess |
 | **P11** | Tests, docs, CI | Full test coverage, README, GitHub Actions |
 
 Each phase should produce a working, testable increment. P1–P4 produce a minimal end-to-end report (portfolio sections only). P5–P7 add instrument-level detail. P8–P10 add integration with pysystemtrade and remote server.
 
 ---
 
-## 17. Acceptance Criteria
+## 19. Acceptance Criteria
 
 The implementation is complete when:
 
-1. ✅ `backtest-report generate /path/to/experiment_dir` produces a valid PDF from a local experiment directory containing `system.pkl`, `config.yaml`, and `meta.json`
+1. ✅ `backtest-report generate /path/to/experiment_dir` produces a valid PDF from a local experiment directory containing Parquet files (or `system.pkl`), `config.yaml`, and `meta.json`
 2. ✅ `backtest-report generate --portfolio-returns returns.parquet --instrument-pnl pnl.parquet --positions positions.parquet --meta meta.json` produces a PDF from raw DataFrames (no pysystemtrade)
 3. ✅ All 10 report sections render correctly with fixture data
 4. ✅ PDF contains: header with metadata, equity curve, drawdown, monthly returns, portfolio stats, rolling Sharpe, instrument small multiples, instrument table, position heatmap, attribution, appendix
 5. ✅ Report page breaks are correct (no orphan headers, no mid-table splits)
-6. ✅ Report styling is consistent (fonts, colours, spacing per design system)
+6. ✅ Report styling is consistent (embedded fonts, colours, spacing per design system)
 7. ✅ Remote experiment loading via `--remote` works against hc4t
-8. ✅ `backtest-report validate <dir>` checks experiment directory completeness
-9. ✅ `backtest-report sections` lists available section IDs
-10. ✅ Test coverage ≥ 80% for all modules
-11. ✅ Short history (< 30 days, < 1 year) handled gracefully with warnings
-12. ✅ Missing instrument metadata defaults to "Unknown" sector/group without crashing
-13. ✅ QuantStats failures are caught and reported; report still generates with partial content
+8. ✅ `backtest-report upload` uploads reports to hc4t
+9. ✅ `backtest-report validate <dir>` checks experiment directory completeness
+10. ✅ `backtest-report sections` lists available section IDs
+11. ✅ Test coverage ≥ 80% for all modules
+12. ✅ Short history (< 30 days, < 1 year) handled gracefully with warnings
+13. ✅ Missing instrument metadata defaults to "Unknown" sector/group without crashing
+14. ✅ QuantStats `qs.stats` failures are caught with manual fallbacks; report still generates with partial content
+15. ✅ Experiment directories use Parquet-first storage; `read_experiment_dir()` works without pysystemtrade when Parquet files exist
