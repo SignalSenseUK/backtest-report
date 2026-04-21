@@ -12,6 +12,12 @@ __all__ = [
     "models",
     "adapters",
     "templates",
+    # models
+    "BacktestConfig",
+    "BacktestData",
+    "BacktestMeta",
+    "InstrumentMeta",
+    "SectionOutput",
 ]
 
 logger = logging.getLogger("backtest_report")
