@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 import time
+from datetime import datetime
 from pathlib import Path
 
 from backtest_report.models import BacktestConfig, BacktestData, BacktestMeta, SectionOutput
@@ -180,9 +181,36 @@ def from_pysystemtrade(
 ) -> Path:
     """Generate report from a pysystemtrade System pickle.
 
-    This is a stub until S21 implements the full adapter.
+    Args:
+        system_path: path to pickled System object
+        output_path: destination PDF path
+        section_filter: optional section IDs to include
+        template_dir: optional template directory override
+        custom_css: optional additional CSS
+
+    Returns:
+        Path to the written PDF
     """
-    raise NotImplementedError(
-        "pysystemtrade integration not yet implemented. "
-        "Use generate_report() with Parquet files instead."
+    from backtest_report.adapters.pysystemtrade import load_system, system_to_backtest_data
+
+    system = load_system(system_path)
+    data, config = system_to_backtest_data(system)
+
+    from backtest_report.models import BacktestMeta
+
+    meta = BacktestMeta(
+        config=config,
+        generated_at=datetime.now(),
+        report_version="0.1.0",
+        data_checksums={},
+        notes="Loaded from pysystemtrade System pickle",
     )
+
+    report = BacktestReport(
+        data=data,
+        meta=meta,
+        section_filter=section_filter,
+        template_dir=template_dir,
+        custom_css=custom_css,
+    )
+    return report.generate(output_path=output_path)

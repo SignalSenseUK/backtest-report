@@ -1,0 +1,145 @@
+# Instrument metadata mappings for pysystemtrade adapters.
+# Maps instrument codes to descriptive metadata.
+EDOLLAR:
+  name: "Eurodollar"
+  sector: "Interest Rate"
+  group: "Short Rate"
+  asset_class: "Interest Rate"
+  exchange: "CME"
+  point_value: 1.0
+  currency: "USD"
+
+US10:
+  name: "US 10-Year Note"
+  sector: "Interest Rate"
+  group: "Treasury"
+  asset_class: "Interest Rate"
+  exchange: "CBOT"
+  point_value: 1000.0
+  currency: "USD"
+
+US5:
+  name: "US 5-Year Note"
+  sector: "Interest Rate"
+  group: "Treasury"
+  asset_class: "Interest Rate"
+  exchange: "CBOT"
+  point_value: 1000.0
+  currency: "USD"
+
+US2:
+  name: "US 2-Year Note"
+  sector: "Interest Rate"
+  group: "Treasury"
+  asset_class: "Interest Rate"
+  exchange: "CBOT"
+  point_value: 2000.0
+  currency: "USD"
+
+GOLD:
+  name: "Gold"
+  sector: "Metals"
+  group: "Precious Metals"
+  asset_class: "Commodity"
+  exchange: "COMEX"
+  point_value: 100.0
+  currency: "USD"
+
+CRUDE_W:
+  name: "WTI Crude Oil"
+  sector: "Energy"
+  group: "Crude Oil"
+  asset_class: "Commodity"
+  exchange: "NYMEX"
+  point_value: 1000.0
+  currency: "USD"
+
+SP500:
+  name: "S&P 500"
+  sector: "Equity Index"
+  group: "Index"
+  asset_class: "Equity Index"
+  exchange: "CME"
+  point_value: 50.0
+  currency: "USD"
+
+NASDAQ100:
+  name: "NASDAQ 100"
+  sector: "Equity Index"
+  group: "Index"
+  asset_class: "Equity Index"
+  exchange: "CME"
+  point_value: 20.0
+  currency: "USD"
+
+EUROSTX:
+  name: "Euro Stoxx 50"
+  sector: "Equity Index"
+  group: "Index"
+  asset_class: "Equity Index"
+  exchange: "EUREX"
+  point_value: 10.0
+  currency: "EUR"
+
+JPY:
+  name: "Japanese Yen"
+  sector: "FX"
+  group: "Major FX"
+  asset_class: "FX"
+  exchange: "CME"
+  point_value: 125000.0
+  currency: "USD"
+
+EURUSD:
+  name: "Euro / US Dollar"
+  sector: "FX"
+  group: "Major FX"
+  asset_class: "FX"
+  exchange: "CME"
+  point_value: 125000.0
+  currency: "USD"
+
+GBPUSD:
+  name: "British Pound / US Dollar"
+  sector: "FX"
+  group: "Major FX"
+  asset_class: "FX"
+  exchange: "CME"
+  point_value: 62500.0
+  currency: "USD"
+
+GAS_US:
+  name: "Henry Hub Natural Gas"
+  sector: "Energy"
+  group: "Natural Gas"
+  asset_class: "Commodity"
+  exchange: "NYMEX"
+  point_value: 10000.0
+  currency: "USD"
+
+CORN:
+  name: "Corn"
+  sector: "Agriculture"
+  group: "Grains"
+  asset_class: "Commodity"
+  exchange: "CBOT"
+  point_value: 50.0
+  currency: "USD"
+
+SOYBEAN:
+  name: "Soybeans"
+  sector: "Agriculture"
+  group: "Grains"
+  asset_class: "Commodity"
+  exchange: "CBOT"
+  point_value: 50.0
+  currency: "USD"
+
+WHEAT:
+  name: "Wheat"
+  sector: "Agriculture"
+  group: "Grains"
+  asset_class: "Commodity"
+  exchange: "CBOT"
+  point_value: 50.0
+  currency: "USD"
