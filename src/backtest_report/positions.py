@@ -41,7 +41,7 @@ def render_position_snapshot(data: BacktestData, meta: BacktestMeta) -> SectionO
     # Determine sampling frequency based on date range
     date_range_days = (data.positions.index[-1] - data.positions.index[0]).days
     if date_range_days > 365 * 2:
-        freq = "ME"  # Monthly for > 2 years
+        freq = "M"  # Monthly for > 2 years
     else:
         freq = "W"  # Weekly for shorter periods
 
@@ -121,7 +121,7 @@ def render_attribution(data: BacktestData, meta: BacktestMeta) -> SectionOutput:
     # ── By-instrument attribution ───────────────────────────────────────────
     if not data.instrument_pnl.empty:
         # Monthly instrument PnL
-        monthly_pnl = data.instrument_pnl.resample("ME").sum()
+        monthly_pnl = data.instrument_pnl.resample("M").sum()
 
         # Sum across instruments to get total monthly
         total_monthly = monthly_pnl.sum(axis=1)
@@ -188,7 +188,7 @@ def render_attribution(data: BacktestData, meta: BacktestMeta) -> SectionOutput:
             else:
                 sector_map[code] = "Unknown"
 
-        monthly_pnl = data.instrument_pnl.resample("ME").sum()
+        monthly_pnl = data.instrument_pnl.resample("M").sum()
 
         # Group by sector
         sector_pnl = {}

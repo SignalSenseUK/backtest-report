@@ -182,7 +182,7 @@ def render_monthly_returns(data: BacktestData, meta: BacktestMeta) -> SectionOut
         - tables: {"monthly_returns": pivot_dataframe}
     """
     # Resample to monthly using month-end frequency
-    monthly = data.portfolio_returns.resample("ME").apply(lambda x: (1 + x).prod() - 1)
+    monthly = data.portfolio_returns.resample("M").apply(lambda x: (1 + x).prod() - 1)
 
     # Build year × month pivot table
     df = monthly.to_frame("return")
@@ -334,18 +334,31 @@ def render_portfolio_stats(data: BacktestData, meta: BacktestMeta) -> SectionOut
         calmar = cagr / abs(max_dd_val) if max_dd_val != 0 else 0
     metrics.append(("Calmar Ratio", _format_metric_value(calmar, "Calmar Ratio")))
 
-    # Max DD Duration (days)
+    # Max DD Duration (calendar days)
+    # qs.stats.max_drawdown_duration does not exist; use drawdown_details
     try:
-        dd_dur = qs.stats.max_drawdown_duration(returns)
+        dd_series = qs.stats.to_drawdown_series(returns)
+        dd_details = qs.stats.drawdown_details(dd_series)
+        if dd_details is not None and len(dd_details) > 0:
+            dd_dur = int(dd_details["days"].max())
+        else:
+            dd_dur = 0
     except Exception:
-        is_dd = returns < 0
-        dd_runs = (~is_dd).cumsum()
-        max_dur = 0
-        for run_id in dd_runs.unique():
-            run_mask = dd_runs == run_id
-            if is_dd[run_mask].all():
-                max_dur = max(max_dur, run_mask.sum())
-        dd_dur = max_dur
+        # Manual fallback: compute drawdown and find longest underwater period
+        cumulative = (1 + returns).cumprod()
+        cummax = cumulative.cummax()
+        drawdown = cumulative / cummax - 1
+        in_dd = drawdown < 0
+        # Group consecutive in-DD / not-in-DD runs
+        changes = in_dd != in_dd.shift(fill_value=False)
+        groups = changes.cumsum()
+        dd_dur = 0
+        for g in groups.unique():
+            mask = groups == g
+            if in_dd[mask].any():
+                # This group contains at least some DD days
+                dd_days = in_dd[mask].sum()
+                dd_dur = max(dd_dur, dd_days)
     metrics.append(("Max DD Duration", _format_metric_value(dd_dur, "Max DD Duration")))
 
     # Win Rate
