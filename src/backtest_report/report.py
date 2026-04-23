@@ -3,15 +3,16 @@ from __future__ import annotations
 
 import logging
 import time
+from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 
-from backtest_report.models import BacktestConfig, BacktestData, BacktestMeta, SectionOutput
+from backtest_report.models import BacktestData, BacktestMeta, SectionOutput
 
 logger = logging.getLogger("backtest_report")
 
 # Section renderers — registered functions: (data, meta) -> SectionOutput
-SECTION_REGISTRY: dict[str, callable] = {}
+SECTION_REGISTRY: dict[str, Callable] = {}
 
 
 def _register_default_sections() -> None:
@@ -25,7 +26,7 @@ def _register_default_sections() -> None:
     SECTION_REGISTRY["rolling_stats"] = portfolio.render_rolling_stats
 
     # Header and appendix
-    from backtest_report import header, appendix
+    from backtest_report import appendix, header
 
     SECTION_REGISTRY["header"] = header.render_header
     SECTION_REGISTRY["appendix"] = appendix.render_appendix

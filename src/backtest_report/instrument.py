@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import logging
 from math import sqrt
-from typing import Any
 
 import matplotlib
 import matplotlib.pyplot as plt
@@ -39,7 +38,11 @@ def render_instrument_pnl(data: BacktestData, meta: BacktestMeta) -> SectionOutp
     apply_report_style()
 
     if data.instrument_pnl.empty:
-        html = '<div class="br-instrument-pnl"><p class="br-muted">No instrument PnL data available.</p></div>'
+        html = (
+            '<div class="br-instrument-pnl">'
+            '<p class="br-muted">No instrument PnL data available.</p>'
+            "</div>"
+        )
         return SectionOutput(section_id="instrument_pnl", html=html, figures={})
 
     # Get instrument list from columns
@@ -52,11 +55,7 @@ def render_instrument_pnl(data: BacktestData, meta: BacktestMeta) -> SectionOutp
     # Compute cumulative PnL for each instrument
     cum_pnl = data.instrument_pnl.cumsum()
 
-    # Get instrument names from metadata if available
-    names = {
-        code: data.instrument_meta.get(code, type("I", (), {"name": code})())
-        for code in instruments
-    }
+
 
     # Number of subplots
     n = len(instruments)
@@ -144,7 +143,11 @@ def render_instrument_table(data: BacktestData, meta: BacktestMeta) -> SectionOu
         - html: <table class="br-instrument-table">...</table>
     """
     if data.instrument_pnl.empty:
-        html = '<div class="br-instrument-table-wrapper"><p class="br-muted">No instrument data available.</p></div>'
+        html = (
+            '<div class="br-instrument-table-wrapper">'
+            '<p class="br-muted">No instrument data available.</p>'
+            "</div>"
+        )
         return SectionOutput(section_id="instrument_table", html=html)
 
     instruments = list(data.instrument_pnl.columns)

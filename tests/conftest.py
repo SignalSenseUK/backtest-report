@@ -1,14 +1,12 @@
 """Pytest fixtures for backtest-report tests."""
 from __future__ import annotations
 
-from datetime import date, datetime
 from pathlib import Path
 
 import pandas as pd
 import pytest
 
 from backtest_report.models import (
-    BacktestConfig,
     BacktestData,
     BacktestMeta,
     InstrumentMeta,
@@ -46,7 +44,7 @@ def sample_meta() -> BacktestMeta:
 
 
 @pytest.fixture
-def sample_backtest_data(
+def sample_data(
     sample_portfolio_returns: pd.Series,
     sample_instrument_pnl: pd.DataFrame,
     sample_positions: pd.DataFrame,

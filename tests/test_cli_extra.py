@@ -1,12 +1,10 @@
 """Additional CLI tests for export-parquet command."""
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 from click.testing import CliRunner
 
-from backtest_report.__main__ import cli, export_parquet
+from backtest_report.__main__ import cli
 
 
 @pytest.fixture

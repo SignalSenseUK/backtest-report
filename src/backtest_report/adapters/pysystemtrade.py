@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import logging
 import pickle
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -26,7 +27,7 @@ def _check_pysystemtrade() -> None:
         raise PySystemTradeNotInstalled(
             "pysystemtrade is required for this function.\n"
             "Install with: pip install backtest-report[pysystemtrade]"
-        )
+        ) from None
 
 
 def load_system(pickle_path: Path) -> Any:
@@ -42,7 +43,6 @@ def load_system(pickle_path: Path) -> Any:
     """
     _check_pysystemtrade()
 
-    import sys
 
     logger.info("Loading pysystemtrade System from: %s", pickle_path)
     raw = pickle_path.read_bytes()
@@ -110,7 +110,9 @@ def extract_backtest_config(system: Any, overrides: dict[str, Any] | None = None
         "strategy_name": strategy_name,
         "engine": "pysystemtrade",
         "engine_version": _get_pysystemtrade_version(),
-        "python_version": f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
+        "python_version": (
+            f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
+        ),
         "git_commit": "",
         "instrument_universe": instrument_list,
         "start_date": start_date,
@@ -167,7 +169,9 @@ def extract_backtest_data(system: Any) -> dict[str, Any]:
         except Exception:
             portfolio_returns = _extract_from_system_results(system, "portfolio_returns")
 
-        if portfolio_returns is not None and not isinstance(portfolio_returns.index, pd.DatetimeIndex):
+        if portfolio_returns is not None and not isinstance(
+            portfolio_returns.index, pd.DatetimeIndex
+        ):
             portfolio_returns = None
     else:
         portfolio_returns = None
@@ -195,7 +199,6 @@ def extract_backtest_data(system: Any) -> dict[str, Any]:
 
 def _extract_from_system_results(system: Any, key: str) -> Any:
     """Try to extract a result from the system using various attribute paths."""
-    import pandas as pd
 
     # Try direct backtest attribute
     backtest = getattr(system, "backtest", None) or getattr(system, "result", None)
@@ -264,7 +267,7 @@ def load_instrument_map() -> dict[str, dict[str, str]]:
         dict mapping instrument code → metadata dict
     """
     try:
-        import yaml
+        import yaml  # type: ignore[import-untyped]
 
         from backtest_report.render import get_template_dir
 

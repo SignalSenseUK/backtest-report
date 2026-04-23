@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
-import yaml
+import yaml  # type: ignore[import-untyped]
 
 from backtest_report.models import BacktestConfig, BacktestData, BacktestMeta, InstrumentMeta
 
@@ -41,7 +41,7 @@ def compute_checksum(path: Path) -> str:
 
 
 def _read_json(path: Path) -> dict[str, Any]:
-    return json.loads(path.read_text())
+    return dict(json.loads(path.read_text()))
 
 
 def _write_json(path: Path, data: dict[str, Any]) -> None:
@@ -142,7 +142,8 @@ def write_experiment_dir(
 def read_experiment_dir(path: Path) -> tuple[BacktestData, BacktestMeta]:
     """Read an experiment directory.
 
-    Strategy 1 (Parquet-first): if portfolio_returns.parquet exists, read all Parquet + JSON/YAML files.
+    Strategy 1 (Parquet-first): if portfolio_returns.parquet exists,
+    read all Parquet + JSON/YAML files.
 
     Strategy 2 (Pickle fallback): if Parquet files are missing but system.pkl exists,
     attempt to use pysystemtrade adapter. If adapter is not installed, raise ImportError.
@@ -206,10 +207,15 @@ def _read_pickle_strategy(path: Path) -> tuple[BacktestData, BacktestMeta]:
         from backtest_report.adapters.pysystemtrade import load_system
 
         system = load_system(path / "system.pkl")
-        from backtest_report.adapters.pysystemtrade import extract_backtest_data, extract_backtest_config
+        from backtest_report.adapters.pysystemtrade import (
+            extract_backtest_config,
+            extract_backtest_data,
+        )
 
-        config = extract_backtest_config(system)
-        data = extract_backtest_data(system)
+        config_dict = extract_backtest_config(system)
+        data_dict = extract_backtest_data(system)
+        config = BacktestConfig.model_validate(config_dict)
+        data = BacktestData.model_validate(data_dict)
         meta = BacktestMeta(
             config=config,
             generated_at=_now(),
@@ -246,7 +252,10 @@ def validate_experiment_dir(path: Path) -> dict[str, Any]:
         else:
             missing.append(fname)
 
-    parquet_ok = all((path / f).exists() for f in ["portfolio_returns.parquet", "instrument_pnl.parquet", "positions.parquet"])
+    parquet_ok = all(
+        (path / f).exists()
+        for f in ["portfolio_returns.parquet", "instrument_pnl.parquet", "positions.parquet"]
+    )
     pickle_ok = (path / "system.pkl").exists()
 
     if parquet_ok:

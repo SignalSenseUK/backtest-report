@@ -15,9 +15,9 @@ from backtest_report.adapters.pysystemtrade import (
 class TestCheckPySystemTrade:
     def test_raises_when_not_installed(self) -> None:
         # Since pysystemtrade is NOT installed, _check_pysystemtrade should raise
-        with pytest.raises(PySystemTradeNotInstalled) as exc_info:
-            from backtest_report.adapters.pysystemtrade import _check_pysystemtrade
+        from backtest_report.adapters.pysystemtrade import _check_pysystemtrade
 
+        with pytest.raises(PySystemTradeNotInstalled) as exc_info:
             _check_pysystemtrade()
         assert "pip install backtest-report[pysystemtrade]" in str(exc_info.value)
 

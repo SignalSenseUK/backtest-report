@@ -9,11 +9,9 @@ from __future__ import annotations
 import logging
 from io import BytesIO
 from math import sqrt
-from typing import Any
 
 import matplotlib
 import matplotlib.pyplot as plt
-import numpy as np
 import pandas as pd
 
 from backtest_report.models import BacktestData, BacktestMeta, SectionOutput
@@ -126,7 +124,8 @@ def render_portfolio_pnl(data: BacktestData, meta: BacktestMeta) -> SectionOutpu
 
     html = (
         '<div class="br-portfolio-pnl">'
-        f'<img src="data:image/png;base64,{equity_base64}" alt="Cumulative Returns" style="width:100%;" />'
+        f'<img src="data:image/png;base64,{equity_base64}" '
+        f'alt="Cumulative Returns" style="width:100%;" />'
         f'<img src="data:image/png;base64,{drawdown_base64}" alt="Drawdown" style="width:100%;" />'
         "</div>"
     )
@@ -182,7 +181,7 @@ def render_monthly_returns(data: BacktestData, meta: BacktestMeta) -> SectionOut
         - tables: {"monthly_returns": pivot_dataframe}
     """
     # Resample to monthly using month-end frequency
-    monthly = data.portfolio_returns.resample("M").apply(lambda x: (1 + x).prod() - 1)
+    monthly = data.portfolio_returns.resample("ME").apply(lambda x: (1 + x).prod() - 1)
 
     # Build year × month pivot table
     df = monthly.to_frame("return")
@@ -229,9 +228,15 @@ def render_monthly_returns(data: BacktestData, meta: BacktestMeta) -> SectionOut
 
         # Year total cell
         year_val = row.get("Year", None)
-        year_colour = _return_to_color(year_val) if year_val is not None and not pd.isna(year_val) else "#f3f4f6"
+        year_colour = (
+            _return_to_color(year_val)
+            if year_val is not None and not pd.isna(year_val)
+            else "#f3f4f6"
+        )
         year_text = _format_return(year_val)
-        cells.append(f'<td style="background-color: {year_colour}; font-weight: 600">{year_text}</td>')
+        cells.append(
+            f'<td style="background-color: {year_colour}; font-weight: 600">{year_text}</td>'
+        )
 
         lines.append(f"<tr><td class='br-year-label'>{year}</td>" + "".join(cells) + "</tr>")
 
@@ -386,7 +391,9 @@ def render_portfolio_stats(data: BacktestData, meta: BacktestMeta) -> SectionOut
         avg_win_val = returns[returns > 0].mean() if (returns > 0).any() else 0
         avg_loss_val = abs(returns[returns < 0].mean()) if (returns < 0).any() else 0
         win_loss_ratio = avg_win_val / avg_loss_val if avg_loss_val != 0 else 0
-    metrics.append(("Avg Win / Avg Loss", _format_metric_value(win_loss_ratio, "Avg Win / Avg Loss")))
+    metrics.append(
+        ("Avg Win / Avg Loss", _format_metric_value(win_loss_ratio, "Avg Win / Avg Loss"))
+    )
 
     # Skewness
     try:

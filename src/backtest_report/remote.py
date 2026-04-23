@@ -57,7 +57,7 @@ def read_remote_experiment(
     except FileNotFoundError:
         raise RuntimeError(
             "'scp' command not found. Ensure OpenSSH is installed and in PATH."
-        )
+        ) from None
 
     return local_tmp
 
@@ -97,7 +97,7 @@ def write_remote_report(
     except FileNotFoundError:
         raise RuntimeError(
             "'scp' command not found. Ensure OpenSSH is installed and in PATH."
-        )
+        ) from None
 
 
 def load_remote_config() -> dict[str, Any]:
@@ -121,9 +121,12 @@ def load_remote_config() -> dict[str, Any]:
     }
 
     # Load from YAML config file if present
-    for config_file in [Path.cwd() / ".backtest-report.yaml", Path.home() / ".backtest-report.yaml"]:
+    for config_file in [
+        Path.cwd() / ".backtest-report.yaml",
+        Path.home() / ".backtest-report.yaml",
+    ]:
         if config_file.exists():
-            import yaml
+            import yaml  # type: ignore[import-untyped]
 
             with config_file.open() as f:
                 remote_cfg = yaml.safe_load(f) or {}
@@ -134,9 +137,7 @@ def load_remote_config() -> dict[str, Any]:
     for key in ("remote_host", "remote_user", "remote_port", "remote_dir"):
         env_key = f"BACKTEST_{key.upper()}"
         if env_key in os.environ:
-            value = os.environ[env_key]
-            if key == "remote_port":
-                value = int(value)
-            config[key] = value
+            val_str = os.environ[env_key]
+            config[key] = int(val_str) if key == "remote_port" else val_str
 
     return config

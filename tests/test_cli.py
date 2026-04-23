@@ -1,10 +1,7 @@
 """Unit tests for CLI commands."""
 from __future__ import annotations
 
-import json
-import tempfile
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 from click.testing import CliRunner
@@ -44,11 +41,10 @@ class TestSections:
 class TestValidate:
     def test_validate_complete_dir(self, cli_runner, tmp_path: Path) -> None:
         # Create a complete experiment directory
-        from backtest_report.persist import write_experiment_dir
-        from tests.conftest import FIXTURES_DIR
-
         import pandas as pd
+
         from backtest_report.models import BacktestConfig
+        from backtest_report.persist import write_experiment_dir
 
         dates = pd.date_range("2020-01-02", periods=100, freq="B")
         returns = pd.Series([0.01] * 100, index=dates, name="portfolio_returns")

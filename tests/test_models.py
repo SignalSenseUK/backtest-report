@@ -6,6 +6,7 @@ from datetime import date, datetime
 import numpy as np
 import pandas as pd
 import pytest
+from pydantic import BaseModel
 
 from backtest_report.models import (
     BacktestConfig,
@@ -14,7 +15,6 @@ from backtest_report.models import (
     InstrumentMeta,
     SectionOutput,
 )
-from pydantic import BaseModel
 
 
 class TestInstrumentMeta:

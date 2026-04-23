@@ -8,7 +8,6 @@ from pathlib import Path
 import click
 
 from backtest_report import __version__
-from backtest_report.models import BacktestData, BacktestMeta
 from backtest_report.persist import read_experiment_dir, validate_experiment_dir
 from backtest_report.report import BacktestReport
 

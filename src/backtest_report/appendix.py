@@ -11,13 +11,15 @@ def render_appendix(data: BacktestData, meta: BacktestMeta) -> SectionOutput:
         - section_id: "appendix"
         - html: rendered appendix template
     """
-    import yaml
+    import yaml  # type: ignore[import-untyped]
     from jinja2 import Environment, FileSystemLoader, select_autoescape
 
     from backtest_report.render import get_template_dir
 
     # Serialize config as YAML
-    config_yaml = yaml.safe_dump(meta.config.model_dump(), default_flow_style=False, sort_keys=False)
+    config_yaml = yaml.safe_dump(
+        meta.config.model_dump(), default_flow_style=False, sort_keys=False
+    )
 
     # Environment info
     import platform

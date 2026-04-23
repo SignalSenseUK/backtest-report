@@ -19,14 +19,14 @@ from __future__ import annotations
 
 import logging
 from base64 import b64encode
-from datetime import date, datetime, timezone
+from datetime import datetime, timezone
 from hashlib import sha256
 from pathlib import Path
 from time import time
 from typing import Any
 
 import pandas as pd
-import requests
+import requests  # type: ignore[import-untyped]
 
 logger = logging.getLogger("backtest_report")
 
@@ -61,12 +61,12 @@ def _get_headers(user_id: str, api_token: str) -> dict[str, str]:
     NOT plain Basic auth.
     """
     timestamp = f"{int(time())}"
-    time_stamped_token = f"{api_token}:{timestamp}".encode("utf-8")
+    time_stamped_token = f"{api_token}:{timestamp}".encode()
     hashed_token = sha256(time_stamped_token).hexdigest()
-    authentication = f"{user_id}:{hashed_token}".encode("utf-8")
-    authentication = b64encode(authentication).decode("ascii")
+    auth_bytes = f"{user_id}:{hashed_token}".encode()
+    auth_str = b64encode(auth_bytes).decode("ascii")
     return {
-        "Authorization": f"Basic {authentication}",
+        "Authorization": f"Basic {auth_str}",
         "Timestamp": timestamp,
     }
 
@@ -87,7 +87,7 @@ def _api_post(
         timeout=timeout,
     )
     resp.raise_for_status()
-    return resp.json()
+    return dict(resp.json())
 
 
 def authenticate(user_id: str, api_token: str) -> bool:
@@ -109,7 +109,7 @@ def list_backtests(
     })
     if not resp.get("success"):
         raise QuantConnectAPIError(f"Failed to list backtests: {resp.get('errors')}")
-    return resp.get("backtests", [])
+    return list(resp.get("backtests", []))
 
 
 def get_backtest_info(
@@ -132,7 +132,7 @@ def get_backtest_info(
         raise QuantConnectNotFoundError(
             f"Backtest {backtest_id} not found in project {project_id}"
         )
-    return bt
+    return dict(bt)
 
 
 def get_chart(
@@ -166,7 +166,7 @@ def get_chart(
         raise QuantConnectAPIError(
             f"Failed to read chart '{chart_name}': {resp.get('errors')}"
         )
-    return resp["chart"]
+    return dict(resp["chart"])
 
 
 def _safe_get_chart(
@@ -197,7 +197,8 @@ def _parse_ts_value_pairs(values: list) -> dict[pd.Timestamp, float]:
             result[ts.normalize()] = v[1]
         elif isinstance(v, dict):
             ts = pd.Timestamp(v.get("x", v.get("time", 0)), unit="s", tz="UTC")
-            result[ts.normalize()] = v.get("y", v.get("value", 0))
+            y_val = v.get("y", v.get("value", 0))
+            result[ts.normalize()] = float(y_val) if y_val is not None else 0.0
     return result
 
 
@@ -213,7 +214,8 @@ def _parse_ts_ohlc_pairs(values: list) -> dict[pd.Timestamp, float]:
             result[ts.normalize()] = v[1]
         elif isinstance(v, dict):
             ts = pd.Timestamp(v.get("x", v.get("time", 0)), unit="s", tz="UTC")
-            result[ts.normalize()] = v.get("y", v.get("close", v.get("value", 0)))
+            y_val = v.get("y", v.get("close", v.get("value", 0)))
+            result[ts.normalize()] = float(y_val) if y_val is not None else 0.0
     return result
 
 
@@ -258,13 +260,14 @@ def parse_returns_series(chart: dict[str, Any]) -> pd.Series | None:
             for v in values:
                 if isinstance(v, (list, tuple)) and len(v) >= 2:
                     ts = pd.Timestamp(v[0], unit="s", tz="UTC")
-                    ret = v[1]
+                    ret = float(v[1])
                     if abs(ret) > 1:
                         ret = ret / 100
                     returns[ts.normalize()] = ret
                 elif isinstance(v, dict):
                     ts = pd.Timestamp(v.get("x", 0), unit="s", tz="UTC")
-                    ret = v.get("y", v.get("value", 0))
+                    ret_val = v.get("y", v.get("value", 0))
+                    ret = float(ret_val) if ret_val is not None else 0.0
                     if abs(ret) > 1:
                         ret = ret / 100
                     returns[ts.normalize()] = ret
@@ -280,7 +283,7 @@ def parse_returns_series(chart: dict[str, Any]) -> pd.Series | None:
 def parse_benchmark_chart(chart: dict[str, Any]) -> pd.Series | None:
     """Parse Benchmark chart into a daily benchmark returns Series."""
     series = chart.get("series", {})
-    for skey, sdata in series.items():
+    for _skey, sdata in series.items():
         values = sdata.get("values", [])
         if not values:
             continue
@@ -648,7 +651,7 @@ def fetch_backtest(
 
     # 4. Fetch per-instrument data from charts
     margin_chart = _safe_get_chart(uid, token, project_id, backtest_id, "Portfolio Margin")
-    exposure_chart = _safe_get_chart(uid, token, project_id, backtest_id, "Exposure")
+    _safe_get_chart(uid, token, project_id, backtest_id, "Exposure")
 
     # 5. Parse closed trades
     closed_trades_df = parse_closed_trades(closed_trades_raw)
@@ -694,7 +697,7 @@ def fetch_backtest(
     if instrument_pnl.empty:
         # Fallback: equal-weight allocation
         n = len(instruments)
-        pnl_data = {instr: portfolio_returns.values / n for instr in instruments}
+        pnl_data = dict.fromkeys(instruments, portfolio_returns.values / n)
         instrument_pnl = pd.DataFrame(pnl_data, index=portfolio_returns.index)
         instrument_pnl.index = pd.DatetimeIndex(instrument_pnl.index, name="date")
 
@@ -715,7 +718,7 @@ def fetch_backtest(
         positions.index = pd.DatetimeIndex(positions.index, name="date")
 
     # 9. Instrument metadata
-    instrument_meta = {
+    instrument_meta: dict[str, dict[str, Any]] = {
         instr: {"code": instr, "asset_class": _guess_asset_class(instr)}
         for instr in instruments
     }

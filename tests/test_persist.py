@@ -9,7 +9,7 @@ import pandas as pd
 import pytest
 import yaml
 
-from backtest_report.models import BacktestData, BacktestMeta, InstrumentMeta
+from backtest_report.models import BacktestData, InstrumentMeta
 from backtest_report.persist import (
     compute_checksum,
     read_experiment_dir,
