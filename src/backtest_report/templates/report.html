@@ -15,11 +15,14 @@
 </head>
 <body>
 
-  {# Running header elements (used by @page CSS) #}
-  <div class="br-running-header" style="display:none;"
-       data-experiment-id="{{ meta.config.experiment_id }}"
-       data-report-version="{{ meta.report_version }}"
-       data-generated-at="{{ meta.generated_at.strftime('%Y-%m-%d %H:%M:%S') }}">
+  {# ── String-set elements for WeasyPrint @page running headers/footers ────── #}
+  {# These must be visible in the document flow for string-set to work, #}
+  {# but we position them off-screen so they don't affect layout.        #}
+  <div class="br-string-set"
+       style="position: absolute; left: -9999px; top: 0;">
+    <span style="string-set: experiment-id content">{{ meta.config.experiment_id }}</span>
+    <span style="string-set: report-version content">{{ meta.report_version }}</span>
+    <span style="string-set: generated-at content">{{ meta.generated_at.strftime('%Y-%m-%d %H:%M:%S') }}</span>
   </div>
 
   {# ── Header section ──────────────────────────────────────────────────────── #}
@@ -56,6 +59,7 @@
 
   {# ── Rolling Stats ───────────────────────────────────────────────────────── #}
   {% if sections.rolling_stats %}
+  <div class="br-page-break"></div>
   <section id="section-rolling-stats" class="br-section">
     <h2>Rolling Statistics</h2>
     {{ sections.rolling_stats.html | safe }}
@@ -64,6 +68,7 @@
 
   {# ── Instrument PnL ──────────────────────────────────────────────────────── #}
   {% if sections.instrument_pnl %}
+  <div class="br-page-break"></div>
   <section id="section-instrument-pnl" class="br-section">
     <h2>Instrument P&amp;L</h2>
     {{ sections.instrument_pnl.html | safe }}
@@ -80,6 +85,7 @@
 
   {# ── Position Snapshot ───────────────────────────────────────────────────── #}
   {% if sections.position_snapshot %}
+  <div class="br-page-break"></div>
   <section id="section-position-snapshot" class="br-section">
     <h2>Position Snapshot</h2>
     {{ sections.position_snapshot.html | safe }}
@@ -96,6 +102,7 @@
 
   {# ── Appendix ────────────────────────────────────────────────────────────── #}
   {% if sections.appendix %}
+  <div class="br-page-break"></div>
   <section id="section-appendix" class="br-section">
     <h2>Appendix</h2>
     {{ sections.appendix.html | safe }}
