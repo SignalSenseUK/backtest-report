@@ -49,21 +49,19 @@ class TestRenderPortfolioPnl:
         result = render_portfolio_pnl(sample_data, sample_meta)
         assert result.section_id == "portfolio_pnl"
 
-    def test_figures_contain_equity_and_drawdown(
+    def test_figures_contain_combined_chart(
         self, sample_data: BacktestData, sample_meta
     ) -> None:
         result = render_portfolio_pnl(sample_data, sample_meta)
-        assert "equity_curve" in result.figures
-        assert "drawdown" in result.figures
+        assert "combined" in result.figures
 
     def test_figures_are_non_empty_base64(
         self, sample_data: BacktestData, sample_meta
     ) -> None:
         result = render_portfolio_pnl(sample_data, sample_meta)
-        for key in ("equity_curve", "drawdown"):
-            assert len(result.figures[key]) > 1000
-            decoded = base64.b64decode(result.figures[key])
-            assert decoded.startswith(b"\x89PNG")
+        assert len(result.figures["combined"]) > 1000
+        decoded = base64.b64decode(result.figures["combined"])
+        assert decoded.startswith(b"\x89PNG")
 
     def test_html_contains_img_tags(
         self, sample_data: BacktestData, sample_meta
@@ -72,11 +70,11 @@ class TestRenderPortfolioPnl:
         assert "<img" in result.html
         assert "data:image/png;base64," in result.html
 
-    def test_html_references_both_figures(
+    def test_html_references_combined_figure(
         self, sample_data: BacktestData, sample_meta
     ) -> None:
         result = render_portfolio_pnl(sample_data, sample_meta)
-        assert result.html.count("data:image/png;base64,") == 2
+        assert result.html.count("data:image/png;base64,") == 1  # combined chart
 
     def test_returns_SectionOutput_type(
         self, sample_data: BacktestData, sample_meta
@@ -148,7 +146,6 @@ class TestFormatReturn:
         assert _format_return(None) == "—"
 
     def test_nan_returns_dash(self) -> None:
-
         assert _format_return(float("nan")) == "—"
 
     def test_positive_return_formatted(self) -> None:
@@ -168,12 +165,12 @@ class TestRenderPortfolioStats:
         result = render_portfolio_stats(sample_data, sample_meta)
         assert result.section_id == "portfolio_stats"
 
-    def test_html_contains_table(
+    def test_html_contains_metrics_grid(
         self, sample_data: BacktestData, sample_meta
     ) -> None:
         result = render_portfolio_stats(sample_data, sample_meta)
-        assert "<table" in result.html
-        assert "br-portfolio-stats" in result.html
+        assert "br-metrics-grid" in result.html
+        assert "br-metric-card" in result.html
 
     def test_contains_all_15_metrics(
         self, sample_data: BacktestData, sample_meta
