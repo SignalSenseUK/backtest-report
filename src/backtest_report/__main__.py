@@ -30,16 +30,17 @@ def _configure_logging(verbose: bool) -> None:
 def cli(verbose: bool) -> None:
     """Generate PDF/HTML backtest reports from trading system data.
 
-    Run with subcommands:
-      backtest-report generate    Generate a report (PDF or HTML)
-      backtest-report sections    List available section IDs
-      backtest-report validate    Check experiment directory completeness
+    Subcommands:
+      generate    Generate a report (PDF or HTML)
+      sections    List available section IDs
+      validate    Check experiment directory completeness
+      upload      Upload a report to a remote server
     """
     _configure_logging(verbose)
 
 
 @cli.command()
-@click.argument("experiment_dir", type=click.Path(exists=True, path_type=Path))
+@click.argument("experiment_dir", type=click.Path(exists=False, path_type=Path))
 @click.option(
     "-o",
     "--output",
@@ -74,6 +75,25 @@ def cli(verbose: bool) -> None:
     default=None,
     help="Override template directory",
 )
+@click.option(
+    "--remote",
+    "remote_host",
+    type=str,
+    default=None,
+    help="Download experiment from remote host via SCP before generating",
+)
+@click.option(
+    "--remote-user",
+    type=str,
+    default=None,
+    help="SSH username for remote download (default: from config or 'backtest')",
+)
+@click.option(
+    "--remote-port",
+    type=int,
+    default=None,
+    help="SSH port for remote download (default: 22)",
+)
 def generate(
     experiment_dir: Path,
     output_path: Path | None,
@@ -81,17 +101,48 @@ def generate(
     section_filter: tuple[str, ...],
     section_filter_list: str | None,
     template_dir: Path | None,
+    remote_host: str | None,
+    remote_user: str | None,
+    remote_port: int | None,
 ) -> None:
     """Generate a backtest report from an experiment directory.
 
     EXPERIMENT_DIR should contain Parquet files (portfolio_returns.parquet,
     instrument_pnl.parquet, positions.parquet) and a meta.json file.
 
+    Use --remote to download experiment data from a remote server before
+    generating. The remote path is used as EXPERIMENT_DIR on the server.
+
     Examples:
       backtest-report generate ./experiments/my-backtest
       backtest-report generate ./experiments/my-backtest --format html -o report.html
-      backtest-report generate ./experiments/my-backtest --sections portfolio_pnl portfolio_stats
+      backtest-report generate --remote qr.sheldenkar.co.uk /store/experiments/exp-001
     """
+    # If --remote, download experiment data first
+    if remote_host:
+        from backtest_report.remote import load_remote_config, read_remote_experiment
+
+        remote_cfg = load_remote_config()
+        effective_user = remote_user or remote_cfg.get("remote_user", "backtest")
+        effective_port = remote_port or remote_cfg.get("remote_port", 22)
+
+        click.echo(f"Downloading experiment from {effective_user}@{remote_host}:{effective_port}...")
+        try:
+            local_dir = read_remote_experiment(
+                remote_dir=str(experiment_dir),
+                remote_host=remote_host,
+                remote_user=effective_user,
+                remote_port=effective_port,
+            )
+            experiment_dir = local_dir
+        except RuntimeError as e:
+            click.echo(f"Error: {e}", err=True)
+            sys.exit(1)
+
+    if not experiment_dir.exists():
+        click.echo(f"Error: Directory not found: {experiment_dir}", err=True)
+        sys.exit(1)
+
     # Resolve output path
     ext = fmt if fmt == "html" else "pdf"
     if output_path is None:
@@ -131,29 +182,16 @@ def generate(
 
 @cli.command()
 def sections() -> None:
-    """List all available section IDs that can be used with --sections.
-
-    Currently registered sections:
-      header            Report header banner
-      portfolio_pnl     Equity curve and drawdown charts
-      monthly_returns   Year × month returns heatmap table
-      portfolio_stats   Key metrics table
-      rolling_stats     Rolling Sharpe, 3yr return, beta charts
-      instrument_pnl    Per-instrument PnL small multiples
-      instrument_table  Per-instrument statistics table
-      position_snapshot Time × instrument heatmap
-      attribution       Return attribution charts
-      appendix          Config dump, checksums, environment info
-    """
+    """List all available section IDs that can be used with --sections."""
     registered = [
         ("header", "Report header banner"),
         ("portfolio_pnl", "Equity curve and drawdown charts"),
-        ("monthly_returns", "Year × month returns heatmap table"),
+        ("monthly_returns", "Year x month returns heatmap table"),
         ("portfolio_stats", "Key metrics table"),
         ("rolling_stats", "Rolling Sharpe, 3yr return, beta charts"),
         ("instrument_pnl", "Per-instrument PnL small multiples"),
         ("instrument_table", "Per-instrument statistics table"),
-        ("position_snapshot", "Time × instrument heatmap"),
+        ("position_snapshot", "Time x instrument heatmap"),
         ("attribution", "Return attribution charts"),
         ("appendix", "Config dump, checksums, environment info"),
     ]
@@ -167,9 +205,6 @@ def sections() -> None:
 @click.argument("experiment_dir", type=click.Path(exists=True, path_type=Path))
 def validate(experiment_dir: Path) -> None:
     """Check an experiment directory for completeness.
-
-    Validates that all required files are present and detects whether
-    the Parquet or pickle strategy is being used.
 
     Example:
       backtest-report validate ./experiments/my-backtest
@@ -195,12 +230,47 @@ def validate(experiment_dir: Path) -> None:
 
 
 @cli.command()
+@click.argument("report_path", type=click.Path(exists=True, path_type=Path))
+@click.argument("remote_dir", type=str)
+@click.option("--remote-host", type=str, default=None, help="Remote SSH host (default: from config)")
+@click.option("--remote-user", type=str, default=None, help="SSH username (default: from config or 'backtest')")
+@click.option("--remote-port", type=int, default=None, help="SSH port (default: 22)")
+def upload(report_path: Path, remote_dir: str, remote_host: str | None, remote_user: str | None, remote_port: int | None) -> None:
+    """Upload a generated report to a remote server via SCP.
+
+    REPORT_PATH is the local PDF or HTML file to upload.
+    REMOTE_DIR is the destination directory on the remote server.
+
+    Example:
+      backtest-report upload ./report.pdf /store/reports/
+    """
+    from backtest_report.remote import load_remote_config, write_remote_report
+
+    remote_cfg = load_remote_config()
+    effective_host = remote_host or remote_cfg.get("remote_host", "results.example.com")
+    effective_user = remote_user or remote_cfg.get("remote_user", "backtest")
+    effective_port = remote_port or remote_cfg.get("remote_port", 22)
+
+    click.echo(f"Uploading {report_path} to {effective_user}@{effective_host}:{remote_dir}...")
+    try:
+        write_remote_report(
+            local_pdf=report_path,
+            remote_dir=remote_dir,
+            remote_host=effective_host,
+            remote_user=effective_user,
+            remote_port=effective_port,
+        )
+        click.echo(f"✓ Report uploaded successfully")
+    except RuntimeError as e:
+        click.echo(f"Error: {e}", err=True)
+        sys.exit(1)
+
+
+@cli.command()
 @click.argument("experiment_dir", type=click.Path(exists=True, path_type=Path))
 @click.argument("output_parquet", type=click.Path(path_type=Path))
 def export_parquet(experiment_dir: Path, output_parquet: Path) -> None:
     """Export experiment data to a single Parquet file for portability.
-
-    This is useful for creating a portable backtest bundle.
 
     Example:
       backtest-report export-parquet ./my-backtest ./backtest.parquet
