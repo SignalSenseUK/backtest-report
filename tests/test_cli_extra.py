@@ -1,4 +1,5 @@
 """Additional CLI tests for export-parquet command."""
+
 from __future__ import annotations
 
 import pytest

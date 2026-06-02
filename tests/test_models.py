@@ -1,4 +1,5 @@
 """Unit tests for data models."""
+
 from __future__ import annotations
 
 from datetime import date, datetime

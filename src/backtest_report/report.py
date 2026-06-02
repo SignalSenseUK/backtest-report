@@ -1,4 +1,5 @@
 """Report orchestrator — wires section renderers to the rendering pipeline."""
+
 from __future__ import annotations
 
 import logging

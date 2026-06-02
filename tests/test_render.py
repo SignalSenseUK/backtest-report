@@ -1,4 +1,5 @@
 """Unit tests for render module."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -19,9 +20,7 @@ class TestGetTemplateDir:
 
 
 class TestAssembleHtml:
-    def test_returns_non_empty_html_string(
-        self, sample_data, sample_meta
-    ) -> None:
+    def test_returns_non_empty_html_string(self, sample_data, sample_meta) -> None:
         sections = {
             "portfolio_pnl": SectionOutput(
                 section_id="portfolio_pnl",

@@ -4,6 +4,7 @@ Each function: render_<section_id>(data: BacktestData, meta: BacktestMeta) -> Se
 All charts use matplotlib (not QuantStats built-in plots). QuantStats is only for metrics.
 Charts are encoded as base64 PNG and returned in SectionOutput.figures.
 """
+
 from __future__ import annotations
 
 import logging
@@ -99,25 +100,29 @@ def render_portfolio_pnl(data: BacktestData, meta: BacktestMeta) -> SectionOutpu
 
     # --- Combined Equity & Drawdown Chart ---
     fig, (ax_equity, ax_dd) = plt.subplots(
-        2, 1, figsize=(FIGURE_WIDTH, FIGURE_HEIGHT * 1.5), sharex=True, gridspec_kw={"height_ratios": [3, 1]}
+        2,
+        1,
+        figsize=(FIGURE_WIDTH, FIGURE_HEIGHT * 1.5),
+        sharex=True,
+        gridspec_kw={"height_ratios": [3, 1]},
     )
-    
+
     # Equity Curve
     ax_equity.plot(cumulative.index, cumulative.values, color=POSITIVE_COLOR, linewidth=1.0)
     ax_equity.axhline(y=1.0, color=NEUTRAL_COLOR, linestyle="--", linewidth=0.8, alpha=0.7)
     ax_equity.set_title("Cumulative Returns & Drawdown", pad=15)
     ax_equity.set_ylabel("Growth of $1")
-    
+
     # Drawdown Chart
     ax_dd.fill_between(drawdown.index, 0, drawdown.values, color=NEGATIVE_COLOR, alpha=0.7)
     ax_dd.axhline(y=0, color=NEUTRAL_COLOR, linestyle="-", linewidth=0.8)
     ax_dd.set_ylabel("Drawdown")
     ax_dd.set_xlabel("")
     ax_dd.yaxis.set_major_formatter(matplotlib.ticker.FuncFormatter(lambda x, _: f"{x * 100:.0f}%"))
-    
+
     _format_date_axis(ax_dd)
     fig.tight_layout()
-    
+
     combined_base64 = fig_to_base64(fig)
 
     html = (
@@ -196,8 +201,18 @@ def render_monthly_returns(data: BacktestData, meta: BacktestMeta) -> SectionOut
     worst_month_val = flat.min() if len(flat) > 0 else None
 
     months = [
-        "Jan", "Feb", "Mar", "Apr", "May", "Jun",
-        "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+        "Jan",
+        "Feb",
+        "Mar",
+        "Apr",
+        "May",
+        "Jun",
+        "Jul",
+        "Aug",
+        "Sep",
+        "Oct",
+        "Nov",
+        "Dec",
     ]
     col_labels = months + ["Year"]
 
@@ -264,12 +279,20 @@ def render_portfolio_stats(data: BacktestData, meta: BacktestMeta) -> SectionOut
 
     def _format_metric_value(value: float, name: str) -> str:
         pct_metrics = {
-            "Total Return", "CAGR", "Annualised Vol", "Max Drawdown",
-            "Win Rate", "Best Day", "Worst Day",
+            "Total Return",
+            "CAGR",
+            "Annualised Vol",
+            "Max Drawdown",
+            "Win Rate",
+            "Best Day",
+            "Worst Day",
         }
         ratio_metrics = {
-            "Sharpe Ratio", "Sortino Ratio", "Calmar Ratio",
-            "Profit Factor", "Avg Win / Avg Loss",
+            "Sharpe Ratio",
+            "Sortino Ratio",
+            "Calmar Ratio",
+            "Profit Factor",
+            "Avg Win / Avg Loss",
         }
         if name in pct_metrics:
             return f"{value * 100:.2f}%"
@@ -429,7 +452,7 @@ def render_portfolio_stats(data: BacktestData, meta: BacktestMeta) -> SectionOut
             <div class="br-metric-value">{value}</div>
         </div>
         """)
-    lines.append('</div>')
+    lines.append("</div>")
 
     html = "\n".join(lines)
     return SectionOutput(section_id="portfolio_stats", html=html)
@@ -484,6 +507,7 @@ def render_rolling_stats(data: BacktestData, meta: BacktestMeta) -> SectionOutpu
 
     # --- Rolling 3-Year Annualised Return (only if >= 756 days) ---
     if len(returns) >= 756:
+
         def _compound_annualised(x):
             if len(x) < 2:
                 return float("nan")
@@ -497,9 +521,7 @@ def render_rolling_stats(data: BacktestData, meta: BacktestMeta) -> SectionOutpu
         ax_3y.set_title("Rolling 3-Year Annualised Return")
         ax_3y.set_ylabel("Return %")
         ax_3y.set_xlabel("")
-        ax_3y.yaxis.set_major_formatter(
-            matplotlib.ticker.FuncFormatter(lambda x, _: f"{x:.1f}%")
-        )
+        ax_3y.yaxis.set_major_formatter(matplotlib.ticker.FuncFormatter(lambda x, _: f"{x:.1f}%"))
         _format_date_axis(ax_3y)
         ret_3y_base64 = fig_to_base64(fig_3y)
         figures["rolling_3y_return"] = ret_3y_base64

@@ -1,4 +1,5 @@
 """Unit tests for portfolio section renderers."""
+
 from __future__ import annotations
 
 import base64
@@ -43,42 +44,30 @@ class TestFigToBase64:
 
 
 class TestRenderPortfolioPnl:
-    def test_returns_correct_section_id(
-        self, sample_data: BacktestData, sample_meta
-    ) -> None:
+    def test_returns_correct_section_id(self, sample_data: BacktestData, sample_meta) -> None:
         result = render_portfolio_pnl(sample_data, sample_meta)
         assert result.section_id == "portfolio_pnl"
 
-    def test_figures_contain_combined_chart(
-        self, sample_data: BacktestData, sample_meta
-    ) -> None:
+    def test_figures_contain_combined_chart(self, sample_data: BacktestData, sample_meta) -> None:
         result = render_portfolio_pnl(sample_data, sample_meta)
         assert "combined" in result.figures
 
-    def test_figures_are_non_empty_base64(
-        self, sample_data: BacktestData, sample_meta
-    ) -> None:
+    def test_figures_are_non_empty_base64(self, sample_data: BacktestData, sample_meta) -> None:
         result = render_portfolio_pnl(sample_data, sample_meta)
         assert len(result.figures["combined"]) > 1000
         decoded = base64.b64decode(result.figures["combined"])
         assert decoded.startswith(b"\x89PNG")
 
-    def test_html_contains_img_tags(
-        self, sample_data: BacktestData, sample_meta
-    ) -> None:
+    def test_html_contains_img_tags(self, sample_data: BacktestData, sample_meta) -> None:
         result = render_portfolio_pnl(sample_data, sample_meta)
         assert "<img" in result.html
         assert "data:image/png;base64," in result.html
 
-    def test_html_references_combined_figure(
-        self, sample_data: BacktestData, sample_meta
-    ) -> None:
+    def test_html_references_combined_figure(self, sample_data: BacktestData, sample_meta) -> None:
         result = render_portfolio_pnl(sample_data, sample_meta)
         assert result.html.count("data:image/png;base64,") == 1  # combined chart
 
-    def test_returns_SectionOutput_type(
-        self, sample_data: BacktestData, sample_meta
-    ) -> None:
+    def test_returns_SectionOutput_type(self, sample_data: BacktestData, sample_meta) -> None:
         result = render_portfolio_pnl(sample_data, sample_meta)
         assert isinstance(result, SectionOutput)
         assert result.figures is not None
@@ -86,57 +75,41 @@ class TestRenderPortfolioPnl:
 
 
 class TestRenderMonthlyReturns:
-    def test_returns_correct_section_id(
-        self, sample_data: BacktestData, sample_meta
-    ) -> None:
+    def test_returns_correct_section_id(self, sample_data: BacktestData, sample_meta) -> None:
         result = render_monthly_returns(sample_data, sample_meta)
         assert result.section_id == "monthly_returns"
 
-    def test_html_contains_table(
-        self, sample_data: BacktestData, sample_meta
-    ) -> None:
+    def test_html_contains_table(self, sample_data: BacktestData, sample_meta) -> None:
         result = render_monthly_returns(sample_data, sample_meta)
         assert "<table" in result.html
         assert "br-monthly-returns" in result.html
 
-    def test_table_has_year_rows(
-        self, sample_data: BacktestData, sample_meta
-    ) -> None:
+    def test_table_has_year_rows(self, sample_data: BacktestData, sample_meta) -> None:
         result = render_monthly_returns(sample_data, sample_meta)
         assert result.html.count("<tr>") >= 5
 
-    def test_table_has_14_columns(
-        self, sample_data: BacktestData, sample_meta
-    ) -> None:
+    def test_table_has_14_columns(self, sample_data: BacktestData, sample_meta) -> None:
         result = render_monthly_returns(sample_data, sample_meta)
         assert result.html.count("<th>") >= 14
 
-    def test_conditional_coloring_applied(
-        self, sample_data: BacktestData, sample_meta
-    ) -> None:
+    def test_conditional_coloring_applied(self, sample_data: BacktestData, sample_meta) -> None:
         result = render_monthly_returns(sample_data, sample_meta)
         assert "background-color:" in result.html
 
-    def test_best_and_worst_highlighted(
-        self, sample_data: BacktestData, sample_meta
-    ) -> None:
+    def test_best_and_worst_highlighted(self, sample_data: BacktestData, sample_meta) -> None:
         result = render_monthly_returns(sample_data, sample_meta)
         html = result.html
         # Green or red border for best/worst cells
         assert "10b981" in html or "ef4444" in html
 
-    def test_tables_contains_pivot_dataframe(
-        self, sample_data: BacktestData, sample_meta
-    ) -> None:
+    def test_tables_contains_pivot_dataframe(self, sample_data: BacktestData, sample_meta) -> None:
         result = render_monthly_returns(sample_data, sample_meta)
         assert "monthly_returns" in result.tables
         pivot = result.tables["monthly_returns"]
         assert pivot.index.name == "year"
         assert len(pivot.columns) == 13  # 12 months + Year
 
-    def test_handles_partial_first_year(
-        self, sample_data: BacktestData, sample_meta
-    ) -> None:
+    def test_handles_partial_first_year(self, sample_data: BacktestData, sample_meta) -> None:
         result = render_monthly_returns(sample_data, sample_meta)
         assert result.section_id == "monthly_returns"
 
@@ -159,35 +132,38 @@ class TestFormatReturn:
 
 
 class TestRenderPortfolioStats:
-    def test_returns_correct_section_id(
-        self, sample_data: BacktestData, sample_meta
-    ) -> None:
+    def test_returns_correct_section_id(self, sample_data: BacktestData, sample_meta) -> None:
         result = render_portfolio_stats(sample_data, sample_meta)
         assert result.section_id == "portfolio_stats"
 
-    def test_html_contains_metrics_grid(
-        self, sample_data: BacktestData, sample_meta
-    ) -> None:
+    def test_html_contains_metrics_grid(self, sample_data: BacktestData, sample_meta) -> None:
         result = render_portfolio_stats(sample_data, sample_meta)
         assert "br-metrics-grid" in result.html
         assert "br-metric-card" in result.html
 
-    def test_contains_all_15_metrics(
-        self, sample_data: BacktestData, sample_meta
-    ) -> None:
+    def test_contains_all_15_metrics(self, sample_data: BacktestData, sample_meta) -> None:
         result = render_portfolio_stats(sample_data, sample_meta)
         expected = [
-            "Total Return", "CAGR", "Annualised Vol", "Sharpe Ratio",
-            "Sortino Ratio", "Calmar Ratio", "Max Drawdown", "Max DD Duration",
-            "Win Rate", "Profit Factor", "Avg Win / Avg Loss",
-            "Skewness", "Kurtosis", "Best Day", "Worst Day",
+            "Total Return",
+            "CAGR",
+            "Annualised Vol",
+            "Sharpe Ratio",
+            "Sortino Ratio",
+            "Calmar Ratio",
+            "Max Drawdown",
+            "Max DD Duration",
+            "Win Rate",
+            "Profit Factor",
+            "Avg Win / Avg Loss",
+            "Skewness",
+            "Kurtosis",
+            "Best Day",
+            "Worst Day",
         ]
         for metric in expected:
             assert metric in result.html
 
-    def test_metric_values_are_reasonable(
-        self, sample_data: BacktestData, sample_meta
-    ) -> None:
+    def test_metric_values_are_reasonable(self, sample_data: BacktestData, sample_meta) -> None:
         result = render_portfolio_stats(sample_data, sample_meta)
         html = result.html
         # Vol should be around 15% (from fixture generation)
@@ -210,28 +186,20 @@ class TestRenderPortfolioStats:
 
 
 class TestRenderRollingStats:
-    def test_returns_correct_section_id(
-        self, sample_data: BacktestData, sample_meta
-    ) -> None:
+    def test_returns_correct_section_id(self, sample_data: BacktestData, sample_meta) -> None:
         result = render_rolling_stats(sample_data, sample_meta)
         assert result.section_id == "rolling_stats"
 
-    def test_includes_rolling_sharpe_figure(
-        self, sample_data: BacktestData, sample_meta
-    ) -> None:
+    def test_includes_rolling_sharpe_figure(self, sample_data: BacktestData, sample_meta) -> None:
         result = render_rolling_stats(sample_data, sample_meta)
         assert "rolling_sharpe" in result.figures
 
-    def test_base64_strings_valid(
-        self, sample_data: BacktestData, sample_meta
-    ) -> None:
+    def test_base64_strings_valid(self, sample_data: BacktestData, sample_meta) -> None:
         result = render_rolling_stats(sample_data, sample_meta)
         decoded = base64.b64decode(result.figures["rolling_sharpe"])
         assert decoded.startswith(b"\x89PNG")
 
-    def test_warning_for_short_history(
-        self, sample_data: BacktestData, sample_meta
-    ) -> None:
+    def test_warning_for_short_history(self, sample_data: BacktestData, sample_meta) -> None:
         # Create data with < 252 days
         short_data = sample_data.model_copy(deep=True)
         short_data.portfolio_returns = short_data.portfolio_returns.iloc[:100]

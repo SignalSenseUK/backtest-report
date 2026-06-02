@@ -13,7 +13,7 @@ typecheck:
 	mypy src/
 
 test:
-	pytest tests/ -v --cov=backtest_report
+	pytest tests/ -v --cov --cov-config=pyproject.toml
 
 clean:
 	rm -rf __pycache__

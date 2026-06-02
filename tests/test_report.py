@@ -1,4 +1,5 @@
 """End-to-end integration tests for report generation."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -15,9 +16,7 @@ class TestBacktestReportOrchestrator:
         assert report.meta is not None
         assert report.section_filter is None
 
-    def test_section_filter(
-        self, sample_data: BacktestData, sample_meta
-    ) -> None:
+    def test_section_filter(self, sample_data: BacktestData, sample_meta) -> None:
         report = BacktestReport(
             data=sample_data,
             meta=sample_meta,
@@ -25,9 +24,7 @@ class TestBacktestReportOrchestrator:
         )
         assert report.section_filter == ["portfolio_pnl"]
 
-    def test_generate_pdf(
-        self, sample_data: BacktestData, sample_meta, tmp_path: Path
-    ) -> None:
+    def test_generate_pdf(self, sample_data: BacktestData, sample_meta, tmp_path: Path) -> None:
         report = BacktestReport(
             data=sample_data,
             meta=sample_meta,
@@ -52,9 +49,7 @@ class TestBacktestReportOrchestrator:
         data = output_path.read_bytes()
         assert data[:4] == b"%PDF"
 
-    def test_sections_property(
-        self, sample_data: BacktestData, sample_meta
-    ) -> None:
+    def test_sections_property(self, sample_data: BacktestData, sample_meta) -> None:
         report = BacktestReport(
             data=sample_data,
             meta=sample_meta,

@@ -1,4 +1,5 @@
 """Appendix section renderer."""
+
 from __future__ import annotations
 
 from backtest_report.models import BacktestData, BacktestMeta, SectionOutput
@@ -11,7 +12,7 @@ def render_appendix(data: BacktestData, meta: BacktestMeta) -> SectionOutput:
         - section_id: "appendix"
         - html: rendered appendix template
     """
-    import yaml  # type: ignore[import-untyped]
+    import yaml
     from jinja2 import Environment, FileSystemLoader, select_autoescape
 
     from backtest_report.render import get_template_dir

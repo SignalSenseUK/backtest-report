@@ -2,6 +2,7 @@
 
 Each function: render_<section_id>(data: BacktestData, meta: BacktestMeta) -> SectionOutput.
 """
+
 from __future__ import annotations
 
 import logging
@@ -93,9 +94,7 @@ def _render_instrument_page(
         ax.tick_params(axis="x", labelsize=5)
         ax.tick_params(axis="y", labelsize=5)
         ax.set_xlabel("")
-        ax.yaxis.set_major_formatter(
-            matplotlib.ticker.FuncFormatter(lambda x, _: f"{x:,.0f}")
-        )
+        ax.yaxis.set_major_formatter(matplotlib.ticker.FuncFormatter(lambda x, _: f"{x:,.0f}"))
 
     # Hide unused axes
     for j in range(len(instruments), len(axes)):
@@ -126,7 +125,7 @@ def render_instrument_pnl(data: BacktestData, meta: BacktestMeta) -> SectionOutp
 
     Returns SectionOutput with:
         - section_id: "instrument_pnl"
-        - figures: {"instrument_pnl": base64_png} or {"instrument_pnl_p1": ..., "instrument_pnl_p2": ...}
+        - figures: {"instrument_pnl": base64_png} or {"instrument_pnl_p1": ...}
         - html: div with img tag(s)
     """
     apply_report_style()
@@ -168,7 +167,9 @@ def render_instrument_pnl(data: BacktestData, meta: BacktestMeta) -> SectionOutp
         page_instruments = instruments[start:end]
 
         fig_key = f"instrument_pnl_p{page_num + 1}"
-        fig_base64, html_frag = _render_instrument_page(page_instruments, cum_pnl, data, page_num + 1)
+        fig_base64, html_frag = _render_instrument_page(
+            page_instruments, cum_pnl, data, page_num + 1
+        )
 
         figures[fig_key] = fig_base64
         html_parts.append(html_frag)

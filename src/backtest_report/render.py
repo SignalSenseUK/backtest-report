@@ -3,6 +3,7 @@
 - assemble_html(): build complete HTML from section outputs using Jinja2 templates
 - html_to_pdf(): convert HTML string to PDF using WeasyPrint
 """
+
 from __future__ import annotations
 
 import logging

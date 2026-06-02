@@ -54,6 +54,6 @@ jobs:
       - run: pip install -e ".[dev,parquet]"
       - run: pip install coverage
       - run: coverage combine
-      - run: coverage report --fail-under=70
+      - run: coverage report --rcfile=pyproject.toml --fail-under=70
       - uses: codecov/codecov-action@v4
         if: always()

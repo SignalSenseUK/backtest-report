@@ -1,4 +1,5 @@
 """Click CLI for backtest-report."""
+
 from __future__ import annotations
 
 import logging
@@ -126,7 +127,9 @@ def generate(
         effective_user = remote_user or remote_cfg.get("remote_user", "backtest")
         effective_port = remote_port or remote_cfg.get("remote_port", 22)
 
-        click.echo(f"Downloading experiment from {effective_user}@{remote_host}:{effective_port}...")
+        click.echo(
+            f"Downloading experiment from {effective_user}@{remote_host}:{effective_port}..."
+        )
         try:
             local_dir = read_remote_experiment(
                 remote_dir=str(experiment_dir),
@@ -232,10 +235,23 @@ def validate(experiment_dir: Path) -> None:
 @cli.command()
 @click.argument("report_path", type=click.Path(exists=True, path_type=Path))
 @click.argument("remote_dir", type=str)
-@click.option("--remote-host", type=str, default=None, help="Remote SSH host (default: from config)")
-@click.option("--remote-user", type=str, default=None, help="SSH username (default: from config or 'backtest')")
+@click.option(
+    "--remote-host", type=str, default=None, help="Remote SSH host (default: from config)"
+)
+@click.option(
+    "--remote-user",
+    type=str,
+    default=None,
+    help="SSH username (default: from config or 'backtest')",
+)
 @click.option("--remote-port", type=int, default=None, help="SSH port (default: 22)")
-def upload(report_path: Path, remote_dir: str, remote_host: str | None, remote_user: str | None, remote_port: int | None) -> None:
+def upload(
+    report_path: Path,
+    remote_dir: str,
+    remote_host: str | None,
+    remote_user: str | None,
+    remote_port: int | None,
+) -> None:
     """Upload a generated report to a remote server via SCP.
 
     REPORT_PATH is the local PDF or HTML file to upload.
@@ -260,7 +276,7 @@ def upload(report_path: Path, remote_dir: str, remote_host: str | None, remote_u
             remote_user=effective_user,
             remote_port=effective_port,
         )
-        click.echo(f"✓ Report uploaded successfully")
+        click.echo("✓ Report uploaded successfully")
     except RuntimeError as e:
         click.echo(f"Error: {e}", err=True)
         sys.exit(1)

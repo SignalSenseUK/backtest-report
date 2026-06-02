@@ -1,11 +1,11 @@
 """Position heatmap section renderer."""
+
 from __future__ import annotations
 
 import logging
 
 import matplotlib
 import matplotlib.pyplot as plt
-import numpy as np
 
 from backtest_report.models import BacktestData, BacktestMeta, SectionOutput
 from backtest_report.portfolio import apply_report_style, fig_to_base64

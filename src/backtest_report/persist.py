@@ -3,6 +3,7 @@
 Parquet-first strategy: read/write DataFrames as Parquet, metadata as JSON/YAML.
 Supports optional pickle fallback via pysystemtrade adapter.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -13,7 +14,7 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
-import yaml  # type: ignore[import-untyped]
+import yaml
 
 from backtest_report.models import BacktestConfig, BacktestData, BacktestMeta, InstrumentMeta
 

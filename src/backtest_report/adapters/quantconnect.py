@@ -15,6 +15,7 @@ Usage:
     from backtest_report.persist import write_experiment_dir
     write_experiment_dir(Path("/store/backtests/my_experiment"), data, config, {})
 """
+
 from __future__ import annotations
 
 import logging
@@ -26,7 +27,7 @@ from time import time
 from typing import Any
 
 import pandas as pd
-import requests  # type: ignore[import-untyped]
+import requests
 
 logger = logging.getLogger("backtest_report")
 
@@ -38,16 +39,19 @@ QC_BASE_URL = "https://www.quantconnect.com/api/v2"
 
 class QuantConnectAuthError(Exception):
     """Raised when QC API authentication fails."""
+
     pass
 
 
 class QuantConnectAPIError(Exception):
     """Raised when a QC API request fails."""
+
     pass
 
 
 class QuantConnectNotFoundError(Exception):
     """Raised when a backtest or project is not found."""
+
     pass
 
 
@@ -104,9 +108,14 @@ def list_backtests(
     project_id: int,
 ) -> list[dict[str, Any]]:
     """List backtests for a project."""
-    resp = _api_post("backtests/read", user_id, api_token, {
-        "projectId": project_id,
-    })
+    resp = _api_post(
+        "backtests/read",
+        user_id,
+        api_token,
+        {
+            "projectId": project_id,
+        },
+    )
     if not resp.get("success"):
         raise QuantConnectAPIError(f"Failed to list backtests: {resp.get('errors')}")
     return list(resp.get("backtests", []))
@@ -119,19 +128,22 @@ def get_backtest_info(
     backtest_id: str,
 ) -> dict[str, Any]:
     """Fetch backtest metadata, statistics, and totalPerformance."""
-    resp = _api_post("backtests/read", user_id, api_token, {
-        "projectId": project_id,
-        "backtestId": backtest_id,
-    })
+    resp = _api_post(
+        "backtests/read",
+        user_id,
+        api_token,
+        {
+            "projectId": project_id,
+            "backtestId": backtest_id,
+        },
+    )
     if not resp.get("success"):
         errors = resp.get("errors", [])
         raise QuantConnectAPIError(f"Failed to read backtest: {errors}")
 
     bt = resp.get("backtest", {})
     if not bt:
-        raise QuantConnectNotFoundError(
-            f"Backtest {backtest_id} not found in project {project_id}"
-        )
+        raise QuantConnectNotFoundError(f"Backtest {backtest_id} not found in project {project_id}")
     return dict(bt)
 
 
@@ -163,9 +175,7 @@ def get_chart(
 
     resp = _api_post("backtests/chart/read", user_id, api_token, payload)
     if not resp.get("success"):
-        raise QuantConnectAPIError(
-            f"Failed to read chart '{chart_name}': {resp.get('errors')}"
-        )
+        raise QuantConnectAPIError(f"Failed to read chart '{chart_name}': {resp.get('errors')}")
     return dict(resp["chart"])
 
 
@@ -374,19 +384,21 @@ def parse_closed_trades(
     rows = []
     for t in closed_trades:
         sym = t.get("symbol", {})
-        rows.append({
-            "symbol": sym.get("value", sym.get("Symbol", "UNKNOWN")),
-            "entry_time": pd.Timestamp(t.get("entryTime", 0)),
-            "exit_time": pd.Timestamp(t.get("exitTime", 0)),
-            "direction": t.get("direction", ""),
-            "quantity": float(t.get("quantity", 0)),
-            "entry_price": float(t.get("entryPrice", 0)),
-            "exit_price": float(t.get("exitPrice", 0)),
-            "profit_loss": float(t.get("profitLoss", 0)),
-            "total_fees": float(t.get("totalFees", 0)),
-            "mae": float(t.get("mae", 0)),
-            "mfe": float(t.get("mfe", 0)),
-        })
+        rows.append(
+            {
+                "symbol": sym.get("value", sym.get("Symbol", "UNKNOWN")),
+                "entry_time": pd.Timestamp(t.get("entryTime", 0)),
+                "exit_time": pd.Timestamp(t.get("exitTime", 0)),
+                "direction": t.get("direction", ""),
+                "quantity": float(t.get("quantity", 0)),
+                "entry_price": float(t.get("entryPrice", 0)),
+                "exit_price": float(t.get("exitPrice", 0)),
+                "profit_loss": float(t.get("profitLoss", 0)),
+                "total_fees": float(t.get("totalFees", 0)),
+                "mae": float(t.get("mae", 0)),
+                "mfe": float(t.get("mfe", 0)),
+            }
+        )
 
     df = pd.DataFrame(rows)
     if not df.empty:
@@ -516,10 +528,7 @@ def build_instrument_pnl_from_trades(
 
     # Aggregate by (exit_date, symbol)
     pnl_by_date = (
-        closed_trades_df
-        .groupby(["exit_date", "symbol"])["profit_loss"]
-        .sum()
-        .unstack(fill_value=0)
+        closed_trades_df.groupby(["exit_date", "symbol"])["profit_loss"].sum().unstack(fill_value=0)
     )
     pnl_by_date.index = pd.DatetimeIndex(pnl_by_date.index, name="date")
 
@@ -707,9 +716,7 @@ def fetch_backtest(
     if margin_chart and len(instruments) > 1:
         positions = build_positions_from_margin(portfolio_returns, margin_chart)
     elif not closed_trades_df.empty:
-        positions = build_positions_from_trades(
-            closed_trades_df, portfolio_returns, instruments
-        )
+        positions = build_positions_from_trades(closed_trades_df, portfolio_returns, instruments)
 
     if positions.empty:
         n = len(instruments) or 1
@@ -719,8 +726,7 @@ def fetch_backtest(
 
     # 9. Instrument metadata
     instrument_meta: dict[str, dict[str, Any]] = {
-        instr: {"code": instr, "asset_class": _guess_asset_class(instr)}
-        for instr in instruments
+        instr: {"code": instr, "asset_class": _guess_asset_class(instr)} for instr in instruments
     }
 
     # Enrich with closed trade statistics per instrument
@@ -730,19 +736,17 @@ def fetch_backtest(
             meta = instrument_meta[instr]
             meta["total_trades"] = len(instr_trades)
             meta["total_pnl"] = float(instr_trades["profit_loss"].sum())
-            meta["win_rate"] = float(
-                (instr_trades["profit_loss"] > 0).mean()
-            ) if len(instr_trades) > 0 else 0.0
-            meta["avg_trade_pnl"] = float(
-                instr_trades["profit_loss"].mean()
-            ) if len(instr_trades) > 0 else 0.0
+            meta["win_rate"] = (
+                float((instr_trades["profit_loss"] > 0).mean()) if len(instr_trades) > 0 else 0.0
+            )
+            meta["avg_trade_pnl"] = (
+                float(instr_trades["profit_loss"].mean()) if len(instr_trades) > 0 else 0.0
+            )
             meta["max_mae"] = float(instr_trades["mae"].min()) if len(instr_trades) > 0 else 0.0
             meta["max_mfe"] = float(instr_trades["mfe"].max()) if len(instr_trades) > 0 else 0.0
 
     # 10. Config
-    start_equity = _parse_float(
-        stats.get("Start Equity", stats.get("Starting Equity", "100000"))
-    )
+    start_equity = _parse_float(stats.get("Start Equity", stats.get("Starting Equity", "100000")))
     start_date = portfolio_returns.index[0].date()
     end_date = portfolio_returns.index[-1].date()
 
@@ -776,10 +780,18 @@ def fetch_backtest(
             "qc_statistics": {
                 k: stats[k]
                 for k in [
-                    "Net Profit", "Sharpe Ratio", "Sortino Ratio", "Drawdown",
-                    "Compounding Annual Return", "Total Orders", "Win Rate",
-                    "Alpha", "Beta", "Annual Standard Deviation",
-                    "Total Fees", "Probabilistic Sharpe Ratio",
+                    "Net Profit",
+                    "Sharpe Ratio",
+                    "Sortino Ratio",
+                    "Drawdown",
+                    "Compounding Annual Return",
+                    "Total Orders",
+                    "Win Rate",
+                    "Alpha",
+                    "Beta",
+                    "Annual Standard Deviation",
+                    "Total Fees",
+                    "Probabilistic Sharpe Ratio",
                 ]
                 if k in stats
             },
@@ -826,8 +838,7 @@ def fetch_backtest_data(
     config = BacktestConfig.model_validate(config_dict)
 
     instrument_meta = {
-        code: InstrumentMeta.model_validate(meta)
-        for code, meta in instrument_meta_raw.items()
+        code: InstrumentMeta.model_validate(meta) for code, meta in instrument_meta_raw.items()
     }
 
     # Try to fetch benchmark

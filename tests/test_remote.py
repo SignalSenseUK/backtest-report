@@ -1,4 +1,5 @@
 """Unit tests for remote persistence layer."""
+
 from __future__ import annotations
 
 import os
@@ -25,11 +26,14 @@ class TestLoadRemoteConfig:
         assert cfg["remote_port"] == DEFAULT_REMOTE_PORT
 
     def test_env_var_overrides(self) -> None:
-        with patch.dict(os.environ, {
-            "BACKTEST_REMOTE_HOST": "custom.example.com",
-            "BACKTEST_REMOTE_USER": "myuser",
-            "BACKTEST_REMOTE_PORT": "2222",
-        }):
+        with patch.dict(
+            os.environ,
+            {
+                "BACKTEST_REMOTE_HOST": "custom.example.com",
+                "BACKTEST_REMOTE_USER": "myuser",
+                "BACKTEST_REMOTE_PORT": "2222",
+            },
+        ):
             cfg = load_remote_config()
             assert cfg["remote_host"] == "custom.example.com"
             assert cfg["remote_user"] == "myuser"
@@ -41,8 +45,11 @@ class TestReadRemoteExperiment:
         with patch("subprocess.run") as mock_run:
             mock_run.return_value = None
             read_remote_experiment(
-                "/remote/dir", tmp_path,
-                remote_host="myhost", remote_user="myuser", remote_port=2222,
+                "/remote/dir",
+                tmp_path,
+                remote_host="myhost",
+                remote_user="myuser",
+                remote_port=2222,
             )
             args = mock_run.call_args[0][0]
             assert args[0] == "scp"
@@ -71,8 +78,11 @@ class TestWriteRemoteReport:
         with patch("subprocess.run") as mock_run:
             mock_run.return_value = None
             write_remote_report(
-                pdf, "/remote/dir",
-                remote_host="myhost", remote_user="myuser", remote_port=2222,
+                pdf,
+                "/remote/dir",
+                remote_host="myhost",
+                remote_user="myuser",
+                remote_port=2222,
             )
             args = mock_run.call_args[0][0]
             assert args[0] == "scp"

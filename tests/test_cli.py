@@ -1,4 +1,5 @@
 """Unit tests for CLI commands."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -31,9 +32,16 @@ class TestSections:
         result = cli_runner.invoke(sections, [])
         assert result.exit_code == 0
         for section in [
-            "header", "portfolio_pnl", "monthly_returns", "portfolio_stats",
-            "rolling_stats", "instrument_pnl", "instrument_table",
-            "position_snapshot", "attribution", "appendix",
+            "header",
+            "portfolio_pnl",
+            "monthly_returns",
+            "portfolio_stats",
+            "rolling_stats",
+            "instrument_pnl",
+            "instrument_table",
+            "position_snapshot",
+            "attribution",
+            "appendix",
         ]:
             assert section in result.output
 

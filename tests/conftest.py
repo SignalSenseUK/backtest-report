@@ -1,4 +1,5 @@
 """Pytest fixtures for backtest-report tests."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -68,9 +69,7 @@ def sample_instrument_meta() -> dict[str, InstrumentMeta]:
         "CRUDE_W": InstrumentMeta(code="CRUDE_W", name="WTI Crude Oil", sector="Energy"),
         "SP500": InstrumentMeta(code="SP500", name="S&P 500", sector="Equity Index"),
         "EUROSTX": InstrumentMeta(code="EUROSTX", name="Euro Stoxx 50", sector="Equity Index"),
-        "GAS_US": InstrumentMeta(
-            code="GAS_US", name="Henry Hub Natural Gas", sector="Energy"
-        ),
+        "GAS_US": InstrumentMeta(code="GAS_US", name="Henry Hub Natural Gas", sector="Energy"),
         "CORN": InstrumentMeta(code="CORN", name="Corn", sector="Agriculture"),
         "JPY": InstrumentMeta(code="JPY", name="Japanese Yen", sector="FX"),
     }

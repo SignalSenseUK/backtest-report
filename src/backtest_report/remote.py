@@ -1,4 +1,5 @@
 """Remote persistence layer — SCP/rsync read/write operations."""
+
 from __future__ import annotations
 
 import logging
@@ -39,7 +40,8 @@ def read_remote_experiment(
 
     scp_cmd = [
         "scp",
-        "-P", str(remote_port),
+        "-P",
+        str(remote_port),
         "-r",
         f"{remote_user}@{remote_host}:{remote_dir}/*",
         str(local_tmp) + "/",
@@ -80,7 +82,8 @@ def write_remote_report(
     """
     scp_cmd = [
         "scp",
-        "-P", str(remote_port),
+        "-P",
+        str(remote_port),
         str(local_pdf),
         f"{remote_user}@{remote_host}:{remote_dir}/",
     ]
@@ -126,7 +129,7 @@ def load_remote_config() -> dict[str, Any]:
         Path.home() / ".backtest-report.yaml",
     ]:
         if config_file.exists():
-            import yaml  # type: ignore[import-untyped]
+            import yaml
 
             with config_file.open() as f:
                 remote_cfg = yaml.safe_load(f) or {}

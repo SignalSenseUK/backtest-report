@@ -1,4 +1,5 @@
 """Header section renderer."""
+
 from __future__ import annotations
 
 from backtest_report.models import BacktestData, BacktestMeta, SectionOutput

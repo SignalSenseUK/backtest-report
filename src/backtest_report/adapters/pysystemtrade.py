@@ -3,6 +3,7 @@
 This module provides functions to extract backtest data and configuration
 from a pysystemtrade System object.
 """
+
 from __future__ import annotations
 
 import logging
@@ -16,6 +17,7 @@ logger = logging.getLogger("backtest_report")
 
 class PySystemTradeNotInstalled(ImportError):
     """Raised when pysystemtrade is not installed."""
+
     pass
 
 
@@ -42,7 +44,6 @@ def load_system(pickle_path: Path) -> Any:
         System object
     """
     _check_pysystemtrade()
-
 
     logger.info("Loading pysystemtrade System from: %s", pickle_path)
     raw = pickle_path.read_bytes()
@@ -267,7 +268,7 @@ def load_instrument_map() -> dict[str, dict[str, str]]:
         dict mapping instrument code → metadata dict
     """
     try:
-        import yaml  # type: ignore[import-untyped]
+        import yaml
 
         from backtest_report.render import get_template_dir
 

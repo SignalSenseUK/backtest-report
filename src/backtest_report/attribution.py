@@ -1,4 +1,5 @@
 """Return attribution section renderers (by instrument and by sector)."""
+
 from __future__ import annotations
 
 import matplotlib.pyplot as plt

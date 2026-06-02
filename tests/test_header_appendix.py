@@ -1,4 +1,5 @@
 """Unit tests for header and appendix section renderers."""
+
 from __future__ import annotations
 
 from backtest_report.appendix import render_appendix
