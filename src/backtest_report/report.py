@@ -37,11 +37,11 @@ def _register_default_sections() -> None:
     SECTION_REGISTRY["instrument_pnl"] = instrument.render_instrument_pnl
     SECTION_REGISTRY["instrument_table"] = instrument.render_instrument_table
 
-    # Position and attribution sections
-    from backtest_report import positions
+    # Position heatmap and attribution sections
+    from backtest_report import attribution, positions
 
     SECTION_REGISTRY["position_snapshot"] = positions.render_position_snapshot
-    SECTION_REGISTRY["attribution"] = positions.render_attribution
+    SECTION_REGISTRY["attribution"] = attribution.render_attribution
 
 
 _register_default_sections()

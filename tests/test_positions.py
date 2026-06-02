@@ -2,7 +2,8 @@
 from __future__ import annotations
 
 from backtest_report.models import BacktestData, SectionOutput
-from backtest_report.positions import render_attribution, render_position_snapshot
+from backtest_report.attribution import render_attribution
+from backtest_report.positions import render_position_snapshot
 
 
 class TestRenderPositionSnapshot:
