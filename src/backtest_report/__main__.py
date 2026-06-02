@@ -28,10 +28,10 @@ def _configure_logging(verbose: bool) -> None:
 @click.version_option(version=__version__)
 @click.option("-v", "--verbose", is_flag=True, help="Enable debug logging")
 def cli(verbose: bool) -> None:
-    """Generate PDF backtest reports from trading system data.
+    """Generate PDF/HTML backtest reports from trading system data.
 
     Run with subcommands:
-      backtest-report generate    Generate a PDF report
+      backtest-report generate    Generate a report (PDF or HTML)
       backtest-report sections    List available section IDs
       backtest-report validate    Check experiment directory completeness
     """
@@ -46,7 +46,14 @@ def cli(verbose: bool) -> None:
     "output_path",
     type=click.Path(path_type=Path),
     default=None,
-    help="Output PDF path (default: <experiment_dir>/report.pdf)",
+    help="Output file path (default: <experiment_dir>/report.<pdf|html>)",
+)
+@click.option(
+    "--format",
+    "fmt",
+    type=click.Choice(["pdf", "html"]),
+    default="pdf",
+    help="Output format: pdf (default) or html",
 )
 @click.option(
     "--sections",
@@ -70,21 +77,25 @@ def cli(verbose: bool) -> None:
 def generate(
     experiment_dir: Path,
     output_path: Path | None,
+    fmt: str,
     section_filter: tuple[str, ...],
     section_filter_list: str | None,
     template_dir: Path | None,
 ) -> None:
-    """Generate a PDF backtest report from an experiment directory.
+    """Generate a backtest report from an experiment directory.
 
     EXPERIMENT_DIR should contain Parquet files (portfolio_returns.parquet,
     instrument_pnl.parquet, positions.parquet) and a meta.json file.
 
-    Example:
-      backtest-report generate ./experiments/my-backtest -o report.pdf
+    Examples:
+      backtest-report generate ./experiments/my-backtest
+      backtest-report generate ./experiments/my-backtest --format html -o report.html
+      backtest-report generate ./experiments/my-backtest --sections portfolio_pnl portfolio_stats
     """
     # Resolve output path
+    ext = fmt if fmt == "html" else "pdf"
     if output_path is None:
-        output_path = experiment_dir / "report.pdf"
+        output_path = experiment_dir / f"report.{ext}"
 
     # Resolve section filter
     sections: list[str] | None = None
@@ -102,7 +113,7 @@ def generate(
         sys.exit(1)
 
     # Generate report
-    click.echo(f"Generating report → {output_path}")
+    click.echo(f"Generating {fmt.upper()} report → {output_path}")
     try:
         report = BacktestReport(
             data=data,
@@ -110,7 +121,7 @@ def generate(
             section_filter=sections,
             template_dir=template_dir,
         )
-        result_path = report.generate(output_path=output_path)
+        result_path = report.generate(output_path=output_path, fmt=fmt)
         click.echo(f"✓ Report written: {result_path} ({result_path.stat().st_size / 1024:.1f} KB)")
     except Exception as e:
         logger.exception("Report generation failed")
@@ -128,11 +139,11 @@ def sections() -> None:
       monthly_returns   Year × month returns heatmap table
       portfolio_stats   Key metrics table
       rolling_stats     Rolling Sharpe, 3yr return, beta charts
-      instrument_pnl     Per-instrument PnL small multiples
+      instrument_pnl    Per-instrument PnL small multiples
       instrument_table  Per-instrument statistics table
       position_snapshot Time × instrument heatmap
       attribution       Return attribution charts
-      appendix         Config dump, checksums, environment info
+      appendix          Config dump, checksums, environment info
     """
     registered = [
         ("header", "Report header banner"),

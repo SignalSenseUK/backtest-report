@@ -58,6 +58,7 @@ class BacktestReport:
             template_dir=Path("./templates"),
         )
         pdf_path = report.generate(output_path=Path("report.pdf"))
+        html_path = report.generate(output_path=Path("report.html"), fmt="html")
     """
 
     def __init__(
@@ -98,14 +99,15 @@ class BacktestReport:
         logger.info("  → %s done (%.2fs)", section_id, elapsed)
         return output
 
-    def generate(self, output_path: Path) -> Path:
-        """Generate the full PDF report.
+    def generate(self, output_path: Path, fmt: str = "pdf") -> Path:
+        """Generate the report in the specified format.
 
         Args:
-            output_path: destination PDF file path
+            output_path: destination file path (PDF or HTML)
+            fmt: output format — "pdf" (default) or "html"
 
         Returns:
-            Path to the written PDF file
+            Path to the written file
         """
         from backtest_report.render import assemble_html, html_to_pdf
 
@@ -129,7 +131,14 @@ class BacktestReport:
             custom_css=self.custom_css,
         )
 
-        # Render PDF
+        if fmt == "html":
+            # Write HTML directly
+            output_path = Path(output_path)
+            output_path.write_text(html, encoding="utf-8")
+            logger.info("HTML written: %s (%.1f KB)", output_path, len(html) / 1024)
+            return output_path
+
+        # Render PDF (default)
         logger.info("Rendering PDF → %s", output_path)
         return html_to_pdf(html=html, output_path=output_path, template_dir=self.template_dir)
 
@@ -145,18 +154,20 @@ def generate_report(
     section_filter: list[str] | None = None,
     template_dir: Path | None = None,
     custom_css: str | None = None,
+    fmt: str = "pdf",
 ) -> Path:
     """Convenience function: load experiment dir and generate report.
 
     Args:
         experiment_dir: path to experiment directory (Parquet files)
-        output_path: destination PDF path
+        output_path: destination file path (PDF or HTML)
         section_filter: optional section IDs to include
         template_dir: optional template directory override
         custom_css: optional additional CSS
+        fmt: output format — "pdf" (default) or "html"
 
     Returns:
-        Path to the written PDF
+        Path to the written file
     """
     from backtest_report.persist import read_experiment_dir
 
@@ -170,7 +181,7 @@ def generate_report(
         template_dir=template_dir,
         custom_css=custom_css,
     )
-    return report.generate(output_path=output_path)
+    return report.generate(output_path=output_path, fmt=fmt)
 
 
 def from_pysystemtrade(
@@ -179,18 +190,20 @@ def from_pysystemtrade(
     section_filter: list[str] | None = None,
     template_dir: Path | None = None,
     custom_css: str | None = None,
+    fmt: str = "pdf",
 ) -> Path:
     """Generate report from a pysystemtrade System pickle.
 
     Args:
         system_path: path to pickled System object
-        output_path: destination PDF path
+        output_path: destination file path (PDF or HTML)
         section_filter: optional section IDs to include
         template_dir: optional template directory override
         custom_css: optional additional CSS
+        fmt: output format — "pdf" (default) or "html"
 
     Returns:
-        Path to the written PDF
+        Path to the written file
     """
     from backtest_report.adapters.pysystemtrade import load_system, system_to_backtest_data
 
@@ -214,4 +227,4 @@ def from_pysystemtrade(
         template_dir=template_dir,
         custom_css=custom_css,
     )
-    return report.generate(output_path=output_path)
+    return report.generate(output_path=output_path, fmt=fmt)
