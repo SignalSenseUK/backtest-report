@@ -23,44 +23,29 @@ POSITIVE_COLOR = "#10b981"
 NEGATIVE_COLOR = "#ef4444"
 NEUTRAL_COLOR = "#6b7280"
 
+# Maximum instruments per page for PnL chart pagination
+MAX_INSTRUMENTS_PER_PAGE = 20
 
-def render_instrument_pnl(data: BacktestData, meta: BacktestMeta) -> SectionOutput:
-    """Render per-instrument cumulative PnL as a 4-column small-multiples grid.
 
-    Instruments are sorted by total PnL (best → worst). Each subplot shows the
-    instrument code + name, cumulative PnL curve, and Sharpe ratio annotation.
+def _render_instrument_page(
+    instruments: list[str],
+    cum_pnl: pd.DataFrame,
+    data: BacktestData,
+    page_num: int,
+) -> tuple[str, str]:
+    """Render a single page of instrument PnL small multiples.
 
-    Returns SectionOutput with:
-        - section_id: "instrument_pnl"
-        - figures: {"instrument_pnl": base64_png}
-        - html: minimal div with img tag
+    Args:
+        instruments: list of instrument codes for this page
+        cum_pnl: cumulative PnL DataFrame
+        data: BacktestData for Sharpe lookup
+        page_num: 1-based page number
+
+    Returns:
+        tuple of (base64_png, html_fragment)
     """
-    apply_report_style()
-
-    if data.instrument_pnl.empty:
-        html = (
-            '<div class="br-instrument-pnl">'
-            '<p class="br-muted">No instrument PnL data available.</p>'
-            "</div>"
-        )
-        return SectionOutput(section_id="instrument_pnl", html=html, figures={})
-
-    # Get instrument list from columns
-    instruments = list(data.instrument_pnl.columns)
-
-    # Sort instruments by total PnL (best → worst)
-    totals = data.instrument_pnl.sum().sort_values(ascending=False)
-    instruments = totals.index.tolist()
-
-    # Compute cumulative PnL for each instrument
-    cum_pnl = data.instrument_pnl.cumsum()
-
-
-
-    # Number of subplots
-    n = len(instruments)
     ncols = 4
-    nrows = int(np.ceil(n / ncols))
+    nrows = int(np.ceil(len(instruments) / ncols))
 
     fig, axes = plt.subplots(
         nrows=nrows,
@@ -113,22 +98,86 @@ def render_instrument_pnl(data: BacktestData, meta: BacktestMeta) -> SectionOutp
         )
 
     # Hide unused axes
-    for j in range(n, len(axes)):
+    for j in range(len(instruments), len(axes)):
         axes[j].set_visible(False)
 
     plt.tight_layout(pad=0.5)
     fig_base64 = fig_to_base64(fig)
 
+    page_label = f" (page {page_num})" if page_num > 1 else ""
     html = (
         '<div class="br-instrument-pnl">'
-        f'<img src="data:image/png;base64,{fig_base64}" alt="Instrument PnL" style="width:100%;" />'
+        f'<img src="data:image/png;base64,{fig_base64}" '
+        f'alt="Instrument PnL{page_label}" style="width:100%;" />'
         "</div>"
     )
 
+    return fig_base64, html
+
+
+def render_instrument_pnl(data: BacktestData, meta: BacktestMeta) -> SectionOutput:
+    """Render per-instrument cumulative PnL as a 4-column small-multiples grid.
+
+    Instruments are sorted by total PnL (best → worst). Each subplot shows the
+    instrument code, cumulative PnL curve, and Sharpe ratio annotation.
+
+    If more than MAX_INSTRUMENTS_PER_PAGE (20) instruments are present, they
+    are paginated across multiple chart pages to keep each figure legible.
+
+    Returns SectionOutput with:
+        - section_id: "instrument_pnl"
+        - figures: {"instrument_pnl": base64_png} or {"instrument_pnl_p1": ..., "instrument_pnl_p2": ...}
+        - html: div with img tag(s)
+    """
+    apply_report_style()
+
+    if data.instrument_pnl.empty:
+        html = (
+            '<div class="br-instrument-pnl">'
+            '<p class="br-muted">No instrument PnL data available.</p>'
+            "</div>"
+        )
+        return SectionOutput(section_id="instrument_pnl", html=html, figures={})
+
+    # Sort instruments by total PnL (best → worst)
+    totals = data.instrument_pnl.sum().sort_values(ascending=False)
+    instruments = totals.index.tolist()
+
+    # Compute cumulative PnL for each instrument
+    cum_pnl = data.instrument_pnl.cumsum()
+
+    # Paginate if more than MAX_INSTRUMENTS_PER_PAGE
+    n = len(instruments)
+    if n <= MAX_INSTRUMENTS_PER_PAGE:
+        # Single page — original behaviour
+        fig_base64, html = _render_instrument_page(instruments, cum_pnl, data, page_num=1)
+        return SectionOutput(
+            section_id="instrument_pnl",
+            html=html,
+            figures={"instrument_pnl": fig_base64},
+        )
+
+    # Multiple pages
+    figures = {}
+    html_parts = []
+    total_pages = int(np.ceil(n / MAX_INSTRUMENTS_PER_PAGE))
+
+    for page_num in range(total_pages):
+        start = page_num * MAX_INSTRUMENTS_PER_PAGE
+        end = min(start + MAX_INSTRUMENTS_PER_PAGE, n)
+        page_instruments = instruments[start:end]
+
+        fig_key = f"instrument_pnl_p{page_num + 1}"
+        fig_base64, html_frag = _render_instrument_page(page_instruments, cum_pnl, data, page_num + 1)
+
+        figures[fig_key] = fig_base64
+        html_parts.append(html_frag)
+
+    html = "\n".join(html_parts)
     return SectionOutput(
         section_id="instrument_pnl",
         html=html,
-        figures={"instrument_pnl": fig_base64},
+        figures=figures,
     )
 
 
@@ -179,10 +228,14 @@ def render_instrument_table(data: BacktestData, meta: BacktestMeta) -> SectionOu
             avg_position = float("nan")
             turnover = float("nan")
 
+        # Instrument name: use meta if available, fallback to code
+        instr_meta = data.instrument_meta.get(code)
+        name = instr_meta.name if instr_meta and instr_meta.name else code
+
         rows.append(
             {
                 "code": code,
-                "name": data.instrument_meta.get(code, type("I", (), {"name": code})()).name,
+                "name": name,
                 "total_pnl": total_pnl,
                 "max_drawdown": max_dd,
                 "win_rate": win_rate,
